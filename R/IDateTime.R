@@ -5,11 +5,12 @@
 
 as.IDate <- function(x, ...) UseMethod("as.IDate")
 
+i.IDate = NULL
 as.IDate.default <- function(x, ..., tz = attr(x, "tzone"), use_merge = 'auto') {
   if (is.null(tz)) tz = "UTC"
   if (isTRUE(use_merge) || (use_merge == 'auto' && length(x) >= 1000)) {
     DT = data.table(x)
-    DT[unique(DT)[ , IDate := as.IDate(x, tz = tz, ...)], on = 'x', i.IDate]
+    DT[unique(DT)[ , 'IDate' := as.IDate(x, tz = tz, ...)], on = 'x', i.IDate]
   } else {
     as.IDate(as.Date(x, tz = tz, ...))
   }

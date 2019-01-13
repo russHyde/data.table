@@ -13278,6 +13278,10 @@ test(1977.4, DT["D", -"GRP"], data.table(ID="D", X=NA_real_, key="ID"))
 test(1977.5, DT["D", c("ID","GRP")], data.table(ID="D", GRP=NA_integer_, key="ID"))
 test(1977.6, DT[c("A","D"), c("ID","GRP")], data.table(ID=c("A","A","D"), GRP=INT(1,1,NA)))
 
+# #2306, use_merge argument of as.IDate.default
+char_date = as.character(.Date(17532:17896))
+test(1978.1, as.IDate(char_date, use_merge = TRUE), as.IDate(char_date, use_merge = FALSE))
+test(1978.2, as.IDate(char_date, use_merge = 'auto'), as.IDate(char_date, use_merge = FALSE))
 
 ###################################
 #  Add new tests above this line  #

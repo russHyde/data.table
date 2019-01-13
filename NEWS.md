@@ -52,6 +52,8 @@
     attr(as.data.table(datasets::BOD)[2],"reference")   # was NULL now "A1.4, p. 270"
     ```
     If a superclass defines attributes that may not be valid after a `[` subset then the superclass should implement its own `[` method to manage those after calling `NextMethod()`.
+    
+15. `as.IDate.default` gains `use_merge` argument, default `'auto'`, [#2603](https://github.com/Rdatatable/data.table/issues/2603). In data sets with millions of observations, there are almost universally a much smaller number of unique dates in any given column. In this case, it is much more efficient to parse only the unique set of dates and use this as a lookup table for the full vector; `use_merge` implements this logic. By default this is done for any conversion of at least 1,000 observations.
 
 #### BUG FIXES
 

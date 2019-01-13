@@ -12,7 +12,7 @@ as.IDate.default <- function(x, ..., tz = attr(x, "tzone"), use_merge = 'auto') 
     setDT(DT)
     lookup = unique(DT)
     # shut off use_merge to prevent recursion
-    lookup[ , 'IDate' := as.IDate(x, tz = tz, ..., use_merge = FALSE)]
+    lookup[ , 'IDate' := as.IDate(input, tz = tz, ..., use_merge = FALSE)]
     lookup[DT, on = 'input', 'IDate']
   } else {
     as.IDate(as.Date(x, tz = tz, ...))

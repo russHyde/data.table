@@ -48,7 +48,7 @@
 }
 \usage{
 as.IDate(x, \dots)
-\method{as.IDate}{default}(x, \dots, tz = attr(x, "tzone"), use_merge = 'auto')
+\method{as.IDate}{default}(x, \dots, tz = attr(x, "tzone"), use_lookup = 'auto')
 \method{as.IDate}{Date}(x, \dots)
 \method{as.Date}{IDate}(x, \dots)
 \method{as.POSIXct}{IDate}(x, tz = "UTC", time = 0, \dots)

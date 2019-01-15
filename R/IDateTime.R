@@ -5,14 +5,13 @@
 
 as.IDate <- function(x, ...) UseMethod("as.IDate")
 
-as.IDate.default <- function(x, ..., tz = attr(x, "tzone"), use_merge = 'auto') {
+as.IDate.default <- function(x, ..., tz = attr(x, "tzone"), use_lookup = 'auto') {
   if (is.null(tz)) tz = "UTC"
-  if (isTRUE(use_merge) || (use_merge == 'auto' && length(x) >= 1000)) {
+  if (isTRUE(use_lookup) || (use_lookup == 'auto' && length(x) >= 1000)) {
     DT = list(input = x)
     setDT(DT)
     lookup = unique(DT)
-    # shut off use_merge to prevent recursion
-    lookup[ , 'IDate' := as.IDate(input, tz = tz, ..., use_merge = FALSE)]
+    lookup[ , 'IDate' := as.IDate(as.Date(input, tz = tz, ...))]
     lookup[DT, on = 'input', 'IDate']
   } else {
     as.IDate(as.Date(x, tz = tz, ...))

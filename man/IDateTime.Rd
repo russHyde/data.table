@@ -85,7 +85,7 @@ year(x)
     \code{as.IDate.default}, arguments are passed to \code{as.Date}. For
     \code{as.ITime.default}, arguments are passed to \code{as.POSIXlt}.}
   \item{tz}{time zone (see \code{strptime}).}
-  \item{use_merge}{ Should the parsing be done by via merge? See Details. }
+  \item{use_lookup}{ \code{logical}; should the parsing be done by via merge? See Details. }
   \item{date}{date object convertable with \code{as.IDate}.}
   \item{time}{time-of-day object convertable with \code{as.ITime}.}
   \item{digits}{really \code{units}; one of the units listed for rounding. May be abbreviated.}

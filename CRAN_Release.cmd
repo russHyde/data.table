@@ -413,7 +413,8 @@ BiocManager::valid()
 
 avail = available.packages(repos=BiocManager::repositories())  # includes CRAN at the end from getOption("repos"). And ensure latest Bioc version is in repo path here.
 deps = tools::package_dependencies("data.table", db=avail, which="most", reverse=TRUE, recursive=FALSE)[[1]]
-exclude = c("TCGAbiolinks")  # takes too long over 30mins: https://github.com/BioinformaticsFMRP/TCGAbiolinks/issues/240
+exclude = c("TCGAbiolinks",  # too long (>30mins): https://github.com/BioinformaticsFMRP/TCGAbiolinks/issues/240
+            "ctsem")         # too long (>30mins) see Ttotal on CRAN checks and warnings/errors: https://cran.r-project.org/web/checks/check_results_ctsem.html
 deps = deps[-match(exclude, deps)]
 table(avail[deps,"Repository"])
 length(deps)
@@ -600,24 +601,35 @@ Bump version to even release number in 3 places :
   1) DESCRIPTION
   2) NEWS (without 'on CRAN date' text as that's not yet known)
   3) dllVersion() at the end of init.c
-DO NOT push to GitHub. Prevents even a slim possibility of user getting premature version. Even release numbers must have been obtained from CRAN and only CRAN. (Too many support problems in past before this procedure brought in.)
+DO NOT push to GitHub. Prevents even a slim possibility of user getting premature version. Even release numbers must have been obtained from CRAN and only CRAN. There were too many support problems in the past before this procedure was brought in.
 R CMD build .
-R CMD check --as-cran data.table_1.11.8.tar.gz
+R CMD check --as-cran data.table_1.12.0.tar.gz
 Resubmit to winbuilder (R-release, R-devel and R-oldrelease)
 Submit to CRAN. Message template :
------
-543 CRAN + 134 BIOC rev deps checked ok.
-9 CRAN packages will break : easycsv, fst, iml, PhenotypeSimulator, popEpi, sdcMicro, SIRItoGTFS, SpaDES.core, splitstackshape
-The maintainers have been contacted; some may have updated already.
-Thanks and best, Matt
------
-1. Bump version in DESCRIPTION to next odd number
-2. Add new heading in NEWS for the next dev version. Add "(date)" on the released heading if already accepted.
-3. Bump 3 version numbers in Makefile
-4. Bump dllVersion() in init.c
-Push to GitHub so dev can continue. Commit message format "1.11.8 submitted to CRAN. Bump to 1.11.9"
-Bump dev number text in homepage banner
-Cross fingers accepted first time. If not, push changes to devel and backport locally
-Close milestone
+------------------------------------------------------------
+Hello,
+Happy New Year and thanks for everything!
+595 CRAN + 135 BIOC rev deps checked ok
+2 already updated on CRAN in advance and should not break: behavr, maditr
+3 will break: checkmate, rENA and SpaDES.core. Maintainers aware and standing ready.
+3 newly in error/warning status on CRAN in the last day or so for non-data.table reasons: segregation, xlm, prediction
+NoLD 'additional issue' resolved
+Requests from Luke Tierney and Tomas Kalibera included, noted and thanked in NEWS.
+Best, Matt
+------------------------------------------------------------
+DO NOT commit or push to GitHub. Leave 4 files (CRAN_Release.cmd, DESCRIPTION, NEWS and init.c) edited and not committed. Include these in a single and final bump commit below.
+DO NOT even use a PR. Because PRs build binaries and we don't want any binary versions of even release numbers available from anywhere other than CRAN.
+Leave milestone open with a 'final checks' issue open. Keep updating status there.
 ** If on EC2, shutdown instance. Otherwise get charged for potentially many days/weeks idle time with no alerts **
+Sleep.
+If any issues arise, backport locally. Resubmit the same even version to CRAN.
+When on CRAN :
+1. Close milestone
+2. Check that 'git status' shows 4 files in modified and uncommitted state: DESCRIPTION, NEWS.md, init.c and this CRAN_Release.cmd
+2. Bump version in DESCRIPTION to next odd number. Note that DESCRIPTION was in edited and uncommitted state so even number never appears in git.
+3. Add new heading in NEWS for the next dev version. Add "(date)" on the released heading.
+4. Bump 3 version numbers in Makefile
+5. Bump dllVersion() in init.c
+6. Push to master with this consistent commit message: "1.12.0 on CRAN. Bump to 1.12.1"
+7. Take sha from step 6 and run `git tag 1.12.0 34796cd1524828df9bf13a174265cb68a09fcd77` then `git push origin 1.12.0` (not `git push --tags` according to https://stackoverflow.com/a/5195913/403310)
 

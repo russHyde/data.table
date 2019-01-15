@@ -230,8 +230,12 @@ _Bool userOverride(int8_t *type, lenOff *colNames, const char *anchor, int ncol)
         signed char thisType = typeEnum[INTEGER(typeEnum_idx)[i]-1];
         items = VECTOR_ELT(colClassesSxp,i);
         if (thisType == CT_DROP) {
-          if (!isNull(dropSxp) || !isNull(selectSxp)) STOP("Can't use NULL in colClasses when select or drop is used as well.");
-          dropSxp = items;
+          if (!isNull(dropSxp) || !isNull(selectSxp)) {
+            if (dropSxp!=items) DTWARN("Ignoring the NULL item in colClasses= because select= or drop= has been used.");
+            // package damr has a nice workaround for when NULL didn't work before v1.12.0: it sets drop=col_class$`NULL`. So allow that unambiguous case with no warning.
+          } else {
+            dropSxp = items;
+          }
           continue;
         }
         SEXP itemsInt;
@@ -277,7 +281,10 @@ _Bool userOverride(int8_t *type, lenOff *colNames, const char *anchor, int ncol)
         if (k<1 || k>ncol) {
           DTWARN("Column number %d (drop[%d]) is out of range [1,ncol=%d]",k,j+1,ncol);
         } else {
-          if (type[k-1] == CT_DROP) STOP("Duplicates detected in drop");
+          // if (type[k-1] == CT_DROP) DTWARN("drop= contains duplicates");
+          // NULL in colClasses didn't work between 1.11.0 and 1.11.8 so people have been using drop= to re-specify the NULL columns in colClasses. Now that NULL in colClasses works
+          // from v1.12.0 there is no easy way to distinguish dups in drop= from drop overlapping with NULLs in colClasses. But it's unambiguous that it was intended to remove these
+          // columns, so no need for warning.
           type[k-1] = CT_DROP;
         }
       }
@@ -492,7 +499,7 @@ void progress(int p, int eta) {
   // https://cran.r-project.org/bin/windows/base/rw-FAQ.html#The-console-freezes-when-my-compiled-code-is-running
 
   // No use of \r to avoid bug in RStudio, linked in the same issue #2457
-
+  // # nocov start
   static int displayed = -1;  // -1 means not yet displayed, otherwise [0,50] '=' are displayed
   static char bar[] = "================================================== ";  // 50 marks for each 2%
   if (displayed==-1) {
@@ -519,6 +526,7 @@ void progress(int p, int eta) {
     }
     R_FlushConsole();
   }
+  // # nocov end
 }
 
 void __halt(bool warn, const char *format, ...) {

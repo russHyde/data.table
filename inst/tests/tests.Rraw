@@ -11138,6 +11138,30 @@ test(1825.12, fread("a,b,c\n1,2,3.0\n2,3,4.5", colClasses = c("integer", "intege
               data.table(a=1:2, b=2:3, c=c(3,4.5)),
               warning="Attempt to override column 3 <<c>> of inherent type 'float64' down to 'int32'")
 test(1825.13, fread("a,b,c\n1,2,3.0\n2,3,4.5", colClasses=list(NULL="b")), data.table(a=1:2, c=c(3,4.5)))
+test(1825.14, fread(str, colClasses=list(integer=1:2, NULL=3:5)), data.table(x1=INT(1,3), x2=INT(2,4)))
+test(1825.15, fread(str, colClasses=list(numeric=2, NULL=3:5), drop=1),
+              data.table(x2=c(2,4), x3=c(1.5,2.5), x4=c("T","F"), x5=c("cc","ff")),
+              warning="Ignoring the NULL item in colClasses= because select= or drop= has been used")   # warning because drop != colClasses$`NULL`
+test(1825.16, fread(str, colClasses=(cl<-list(numeric=2, NULL=3:5)), drop=cl$`NULL`), data.table(x1=INT(1,3), x2=c(2,4)))  # cover commit f0bd6e3
+# NULL didn't work in 1.11.0-1.11.8 so some usage exists where drop= is used to respecify the NULLs. The warning could be reintroduced in future.
+# https://github.com/Rdatatable/data.table/issues/3233#issuecomment-453674647
+test(1825.17, fread(str, colClasses=c("integer","integer","NULL","character","NULL"), drop=3), data.table(x1=INT(1,3), x2=INT(2,4), x4=c("T","F")))
+test(1825.18, fread(str, colClasses=c("integer","numeric","NULL","character","NULL"), drop=3:4), data.table(x1=INT(1,3), x2=c(2,4)))
+test(1825.19, fread(str, drop=6), data.table(x1=INT(1,3), x2=INT(2,4), x3=c(1.5,2.5), x4=c("T","F"), x5=c("cc","ff")), warning="Column number 6 (drop[1]) is out of range [1,ncol=5]")
+# extra tests from #3143
+DT = data.table(a = c(1.0, 2.0, 3.0, 4.0, 5.1), b = c("1", "2", "E", "4", "5"))
+fwrite(DT, f<-tempfile())
+test(1825.20, fread(f, colClasses = c(b = "integer")), DT, warning="Attempt to override.*ignored")
+DT = data.table(a = c(1.0, 2.0, 3.0, 4.0, 5.0), b = c("1", "2", "E", "4", "5"))
+fwrite(DT, f)
+test(1825.21, fread(f, colClasses = c(b = "integer")), DT[, a:=as.integer(a)], warning="Attempt to override column 2.*ignored")  # 'a' is read as integer via fwrite not via colClasses
+DT = data.table(b = c("1", "2", "E", "4", "5"))
+fwrite(DT, f)
+test(1825.22, fread(f, colClasses = c(b = "integer")), DT, warning="Attempt to override.*ignored")
+DT = data.table(a = c(1.0, 2.0, 3.0, 4.0, 5.0), b = c("1", "2", "E", "4", "5"))
+fwrite(DT, f)
+test(1825.23, fread(f, colClasses = c(a = "numeric", b = "integer")), DT, warning="Attempt to override column 2.*ignored")
+unlink(f)
 
 # issue 2351
 set.seed(1)

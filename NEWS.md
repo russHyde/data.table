@@ -1,6 +1,17 @@
 **If you are viewing this file on CRAN, please check [latest news on GitHub](https://github.com/Rdatatable/data.table/blob/master/NEWS.md) where the formatting is also better.**
 
-### Changes in v1.11.9 (to be v1.12.0)
+### Changes in v1.12.1 (in development)
+
+#### NEW FEATURES
+
+#### BUG FIXES
+
+#### NOTES
+
+1. When upgrading to 1.12.0 some Windows users might have seen `CdllVersion not found` in some circumstances. We found a way to catch that so the [helpful message](https://twitter.com/MattDowle/status/1084528873549705217) now occurs for those upgrading from versions prior to 1.12.0 too, as well as those upgrading from 1.12.0 to a later version. See item 1 in notes section of 1.12.0 below for more background.
+
+
+### Changes in v1.12.0  (13 Jan 2019)
 
 #### NEW FEATURES
 
@@ -65,7 +76,7 @@
 
 4. `fread(..., skip=)` now skips non-standard `\r` and `\n\r` line endings properly again, [#3006](https://github.com/Rdatatable/data.table/issues/3006). Standard line endings (`\n` Linux/Mac and `\r\n` Windows) were skipped ok. Thanks to @brattono and @tbrycekelly for providing reproducible examples, and @st-pasha for fixing.
 
-5. `fread(..., colClasses=)` could return a corrupted result when a lower type was requested for one or more columns (e.g. reading "3.14" as integer), [#2922](https://github.com/Rdatatable/data.table/issues/2922) [#2863](https://github.com/Rdatatable/data.table/issues/2863). It now ignores the request as documented and the helpful message in verbose mode is upgraded to warning. In future, coercing to a lower type might be supported (with warning if any accuracy is lost). `"NULL"` is recognized again in both vector and list mode; e.g. `colClasses=c("integer","NULL","integer")` and `colClasses=list(NULL=2, integer=10:40)`. Thanks to Arun Srinivasan, Kun Ren and Henri Ståhl for reporting.
+5. `fread(..., colClasses=)` could return a corrupted result when a lower type was requested for one or more columns (e.g. reading "3.14" as integer), [#2922](https://github.com/Rdatatable/data.table/issues/2922) [#2863](https://github.com/Rdatatable/data.table/issues/2863) [#3143](https://github.com/Rdatatable/data.table/issues/3143). It now ignores the request as documented and the helpful message in verbose mode is upgraded to warning. In future, coercing to a lower type might be supported (with warning if any accuracy is lost). `"NULL"` is recognized again in both vector and list mode; e.g. `colClasses=c("integer","NULL","integer")` and `colClasses=list(NULL=2, integer=10:40)`. Thanks to Arun Srinivasan, Kun Ren, Henri Ståhl and @kszela24 for reporting.
 
 6. `cube()` will now produce expected order of results, [#3179](https://github.com/Rdatatable/data.table/issues/3179). Thanks to @Henrik-P for reporting.
 

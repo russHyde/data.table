@@ -10,9 +10,10 @@ as.IDate.default <- function(x, ..., tz = attr(x, "tzone"), use_lookup = 'auto')
   if (isTRUE(use_lookup) || (use_lookup == 'auto' && length(x) >= 1000)) {
     DT = list(input = x)
     setDT(DT)
+
     lookup = unique(DT)
     lookup[ , 'IDate' := as.IDate(as.Date(input, tz = tz, ...))]
-    lookup[DT, on = 'input', 'IDate']
+    lookup[DT, on = 'input']$IDate
   } else {
     as.IDate(as.Date(x, tz = tz, ...))
   }

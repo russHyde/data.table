@@ -25,13 +25,14 @@ Secondary separator for list() columns, such as columns 11 and 12 in BED (no nee
 #define NUT  NUMTYPE+2  // +1 for "numeric" alias for "double"; +1 for CLASS fallback using as.class() at R level afterwards
 
 static int  typeSxp[NUT] =     {NILSXP,  LGLSXP,     LGLSXP,     LGLSXP,     LGLSXP,     INTSXP,    REALSXP,     REALSXP,    REALSXP,        REALSXP,        STRSXP,      REALSXP,    STRSXP   };
-static char typeRName[NUT][10]={"drop",  "logical",  "logical",  "logical",  "logical",  "integer", "integer64", "double",   "double",       "double",       "character", "numeric",  "CLASS"  };
+static char typeRName[NUT][10]={"NULL",  "logical",  "logical",  "logical",  "logical",  "integer", "integer64", "double",   "double",       "double",       "character", "numeric",  "CLASS"  };
 static int  typeEnum[NUT] =    {CT_DROP, CT_BOOL8_N, CT_BOOL8_U, CT_BOOL8_T, CT_BOOL8_L, CT_INT32,  CT_INT64,    CT_FLOAT64, CT_FLOAT64_HEX, CT_FLOAT64_EXT, CT_STRING,   CT_FLOAT64, CT_STRING};
 static colType readInt64As=CT_INT64;
 static SEXP selectSxp;
 static SEXP dropSxp;
 static SEXP colClassesSxp;
 static cetype_t ienc = CE_NATIVE;
+static SEXP RCHK;
 static SEXP DT;
 static SEXP colNamesSxp;
 static int8_t *type;
@@ -125,7 +126,7 @@ SEXP freadR(
     args.skipString = CHAR(STRING_ELT(skipArg,0));  // LENGTH==1 was checked at R level
   } else if (isInteger(skipArg)) {
     args.skipNrow = (int64_t)INTEGER(skipArg)[0];
-  } else error("Internal error: skip not integer or string in freadR.c");
+  } else error("Internal error: skip not integer or string in freadR.c"); // # nocov
 
   if (!isNull(NAstringsArg) && !isString(NAstringsArg))
     error("'na.strings' is type '%s'.  Must be either NULL or a character vector.", type2char(TYPEOF(NAstringsArg)));
@@ -173,32 +174,32 @@ SEXP freadR(
   else STOP("encoding='%s' invalid. Must be 'unknown', 'Latin-1' or 'UTF-8'", tt);
   // === end extras ===
 
-  DT = R_NilValue; // created by callback
+  RCHK = PROTECT(allocVector(VECSXP, 2));
+  // see kalibera/rchk#9 and Rdatatable/data.table#2865.  To avoid rchk false positives.
+  // allocateDT() assigns DT to position 0. userOverride() assigns colNamesSxp to position 1; colNamesSxp is used in allocateDT()
   freadMain(args);
-  if (DT!=R_NilValue) UNPROTECT(1);  // DT is allocated in allocateDT. See notes there.
-  if (colNamesSxp!=R_NilValue) UNPROTECT(1);  // allocated in userOverride() and then used in allocateDT()
+  UNPROTECT(1);
   return DT;
 }
 
 _Bool userOverride(int8_t *type, lenOff *colNames, const char *anchor, int ncol)
 {
   // use typeSize superfluously to avoid not-used warning; otherwise could move typeSize from fread.h into fread.c
-  if (typeSize[CT_BOOL8_N]!=1) STOP("Internal error: typeSize[CT_BOOL8_N] != 1");
-  if (typeSize[CT_STRING]!=8) STOP("Internal error: typeSize[CT_STRING] != 1");
+  if (typeSize[CT_BOOL8_N]!=1) STOP("Internal error: typeSize[CT_BOOL8_N] != 1"); // # nocov
+  if (typeSize[CT_STRING]!=8) STOP("Internal error: typeSize[CT_STRING] != 1"); // # nocov
   colNamesSxp = R_NilValue;
   if (colNames!=NULL) {
-    colNamesSxp = PROTECT(allocVector(STRSXP, ncol));
-    // no protecti++ and no UNPROTECT inside userOverride because it's used in allocateDT().
+    SET_VECTOR_ELT(RCHK, 1, colNamesSxp=allocVector(STRSXP, ncol));
     for (int i=0; i<ncol; i++) {
-      SEXP this;
+      SEXP elem;
       if (colNames[i].len<=0) {
         char buff[12];
         sprintf(buff,"V%d",i+1);
-        this = mkChar(buff);  // no PROTECT as passed immediately to SET_STRING_ELT
+        elem = mkChar(buff);  // no PROTECT as passed immediately to SET_STRING_ELT
       } else {
-        this = mkCharLenCE(anchor+colNames[i].off, colNames[i].len, ienc);  // no PROTECT as passed immediately to SET_STRING_ELT
+        elem = mkCharLenCE(anchor+colNames[i].off, colNames[i].len, ienc);  // no PROTECT as passed immediately to SET_STRING_ELT
       }
-      SET_STRING_ELT(colNamesSxp, i, this);
+      SET_STRING_ELT(colNamesSxp, i, elem);
     }
   }
   if (length(colClassesSxp)) {
@@ -208,7 +209,7 @@ _Bool userOverride(int8_t *type, lenOff *colNames, const char *anchor, int ncol)
       SEXP typeEnum_idx = PROTECT(chmatch(colClassesSxp, typeRName_sxp, NUT, FALSE));
       if (LENGTH(colClassesSxp)==1) {
         signed char newType = typeEnum[INTEGER(typeEnum_idx)[0]-1];
-        if (newType == CT_DROP) STOP("colClasses='drop' is not permitted; i.e. to drop all columns and load nothing");
+        if (newType == CT_DROP) STOP("colClasses='NULL' is not permitted; i.e. to drop all columns and load nothing");
         for (int i=0; i<ncol; i++) type[i]=newType;   // freadMain checks bump up only not down
       } else if (LENGTH(colClassesSxp)==ncol) {
         for (int i=0; i<ncol; i++) {
@@ -223,14 +224,18 @@ _Bool userOverride(int8_t *type, lenOff *colNames, const char *anchor, int ncol)
     } else {
       if (!isNewList(colClassesSxp)) STOP("CfreadR: colClasses is not type list");
       if (!length(getAttrib(colClassesSxp, R_NamesSymbol))) STOP("CfreadR: colClasses is type list but has no names");
-      SEXP typeEnum_idx = PROTECT(chmatch(getAttrib(colClassesSxp, R_NamesSymbol), typeRName_sxp, NUT, FALSE));
+      SEXP typeEnum_idx = PROTECT(chmatch(PROTECT(getAttrib(colClassesSxp, R_NamesSymbol)), typeRName_sxp, NUT, FALSE));
       for (int i=0; i<LENGTH(colClassesSxp); i++) {
         SEXP items;
         signed char thisType = typeEnum[INTEGER(typeEnum_idx)[i]-1];
         items = VECTOR_ELT(colClassesSxp,i);
         if (thisType == CT_DROP) {
-          if (!isNull(dropSxp) || !isNull(selectSxp)) STOP("Can't use NULL in colClasses when select or drop is used as well.");
-          dropSxp = items;
+          if (!isNull(dropSxp) || !isNull(selectSxp)) {
+            if (dropSxp!=items) DTWARN("Ignoring the NULL item in colClasses= because select= or drop= has been used.");
+            // package damr has a nice workaround for when NULL didn't work before v1.12.0: it sets drop=col_class$`NULL`. So allow that unambiguous case with no warning.
+          } else {
+            dropSxp = items;
+          }
           continue;
         }
         SEXP itemsInt;
@@ -253,7 +258,7 @@ _Bool userOverride(int8_t *type, lenOff *colNames, const char *anchor, int ncol)
         UNPROTECT(1); // UNPROTECTing itemsInt inside loop to save protection stack
       }
       for (int i=0; i<ncol; i++) if (type[i]<0) type[i] *= -1;  // undo sign; was used to detect duplicates
-      UNPROTECT(1);  // typeEnum_idx
+      UNPROTECT(2);  // typeEnum_idx (+1 for its protect of getAttrib)
     }
     UNPROTECT(1);  // typeRName_sxp
   }
@@ -276,7 +281,10 @@ _Bool userOverride(int8_t *type, lenOff *colNames, const char *anchor, int ncol)
         if (k<1 || k>ncol) {
           DTWARN("Column number %d (drop[%d]) is out of range [1,ncol=%d]",k,j+1,ncol);
         } else {
-          if (type[k-1] == CT_DROP) STOP("Duplicates detected in drop");
+          // if (type[k-1] == CT_DROP) DTWARN("drop= contains duplicates");
+          // NULL in colClasses didn't work between 1.11.0 and 1.11.8 so people have been using drop= to re-specify the NULL columns in colClasses. Now that NULL in colClasses works
+          // from v1.12.0 there is no easy way to distinguish dups in drop= from drop overlapping with NULLs in colClasses. But it's unambiguous that it was intended to remove these
+          // columns, so no need for warning.
           type[k-1] = CT_DROP;
         }
       }
@@ -319,9 +327,7 @@ size_t allocateDT(int8_t *typeArg, int8_t *sizeArg, int ncolArg, int ndrop, size
   if (newDT) {
     ncol = ncolArg;
     dtnrows = allocNrow;
-    DT = PROTECT(allocVector(VECSXP,ncol-ndrop));
-    // no protecti++ here. See notes at the end of this function.
-    // over-allocation is left to alloc.col on return in fread.R
+    SET_VECTOR_ELT(RCHK, 0, DT=allocVector(VECSXP,ncol-ndrop));
     if (ndrop==0) {
       setAttrib(DT,R_NamesSymbol,colNamesSxp);  // colNames mkChar'd in userOverride step
     } else {
@@ -366,15 +372,6 @@ size_t allocateDT(int8_t *typeArg, int8_t *sizeArg, int ncolArg, int ndrop, size
     resi++;
   }
   dtnrows = allocNrow;
-
-  // rchk on CRAN check page will note there is no UNPROTECT here. This is correct.
-  // ------------------------------------------------------------------------------
-  // This allocateDT function is called from freadMean. freadMain is in fread.c which is a C file independent
-  // of R (it is shared with pydatatable) and contains no R-API calls. freadMain opens the csv file, detects
-  // ncols and types, calls back to this allocateDT function and then continues to populate DT before
-  // returning back to freadR higher up in this file, which is where the UNPROTECT happens.
-  // NB: rchk will note this on CRAN check page
-
   return DTbytes;
 }
 
@@ -502,7 +499,7 @@ void progress(int p, int eta) {
   // https://cran.r-project.org/bin/windows/base/rw-FAQ.html#The-console-freezes-when-my-compiled-code-is-running
 
   // No use of \r to avoid bug in RStudio, linked in the same issue #2457
-
+  // # nocov start
   static int displayed = -1;  // -1 means not yet displayed, otherwise [0,50] '=' are displayed
   static char bar[] = "================================================== ";  // 50 marks for each 2%
   if (displayed==-1) {
@@ -529,6 +526,7 @@ void progress(int p, int eta) {
     }
     R_FlushConsole();
   }
+  // # nocov end
 }
 
 void __halt(bool warn, const char *format, ...) {

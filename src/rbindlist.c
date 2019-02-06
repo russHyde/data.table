@@ -606,7 +606,6 @@ SEXP rbindlist(SEXP l, SEXP sexp_usenames, SEXP sexp_fill, SEXP idcol) {
   struct preprocessData data;
   Rboolean usenames, fill, to_copy = FALSE, coerced=FALSE, isidcol = !isNull(idcol);
   SEXP fnames = R_NilValue, findices = R_NilValue, f_ind = R_NilValue, ans, lf, li, target, thiscol, levels;
-  SEXP factorLevels = R_NilValue;
   R_len_t protecti=0;
 
   // first level of error checks
@@ -642,7 +641,7 @@ SEXP rbindlist(SEXP l, SEXP sexp_usenames, SEXP sexp_fill, SEXP idcol) {
     fnames = PROTECT(add_idcol(fnames, idcol, data.n_cols));
     protecti++;
   }
-  factorLevels = PROTECT(allocVector(VECSXP, data.lcount));
+  SEXP factorLevels = PROTECT(allocVector(VECSXP, data.lcount)); protecti++;
   Rboolean *isRowOrdered = (Rboolean *)R_alloc(data.lcount, sizeof(Rboolean));
   for (int i=0; i<data.lcount; i++) isRowOrdered[i] = FALSE;
 
@@ -693,11 +692,16 @@ SEXP rbindlist(SEXP l, SEXP sexp_usenames, SEXP sexp_fill, SEXP idcol) {
         // TO DO: options(datatable.pedantic=TRUE) to issue this warning :
         // warning("Column %d of item %d is type '%s', inconsistent with column %d of item %d's type ('%s')",j+1,i+1,type2char(TYPEOF(thiscol)),j+1,first+1,type2char(TYPEOF(target)));
       }
+      if (TYPEOF(target)!=STRSXP && TYPEOF(thiscol)!=TYPEOF(target)) {
+        error("Internal error in rbindlist.c: type of 'thiscol' [%s] should have already been coerced to 'target' [%s]. please report to data.table issue tracker.",
+              type2char(TYPEOF(thiscol)), type2char(TYPEOF(target)));
+      }
       switch(TYPEOF(target)) {
       case STRSXP :
         isRowOrdered[resi] = FALSE;
         if (isFactor(thiscol)) {
           levels = getAttrib(thiscol, R_LevelsSymbol);
+          if (isNull(levels)) error("Column %d of item %d has type 'factor' but has no levels; i.e. malformed.", j+1, i+1);
           for (r=0; r<thislen; r++)
             if (INTEGER(thiscol)[r]==NA_INTEGER)
               SET_STRING_ELT(target, ansloc+r, NA_STRING);
@@ -723,22 +727,21 @@ SEXP rbindlist(SEXP l, SEXP sexp_usenames, SEXP sexp_fill, SEXP idcol) {
         }
         break;
       case VECSXP :
-        if (TYPEOF(thiscol) != VECSXP) error("Internal logical error in rbindlist.c (not VECSXP), please report to data.table issue tracker.");
         for (r=0; r<thislen; r++)
           SET_VECTOR_ELT(target, ansloc+r, VECTOR_ELT(thiscol,r));
         break;
       case CPLXSXP : // #1659 fix
-        if (TYPEOF(thiscol) != TYPEOF(target)) error("Internal logical error in rbindlist.c, type of 'thiscol' should have already been coerced to 'target'. please report to data.table issue tracker.");
         for (r=0; r<thislen; r++)
           COMPLEX(target)[ansloc+r] = COMPLEX(thiscol)[r];
         break;
       case REALSXP:
+        memcpy(REAL(target)+ansloc, REAL(thiscol), thislen*SIZEOF(thiscol));
+        break;
       case INTSXP:
+        memcpy(INTEGER(target)+ansloc, INTEGER(thiscol), thislen*SIZEOF(thiscol));
+        break;
       case LGLSXP:
-        if (TYPEOF(thiscol) != TYPEOF(target)) error("Internal logical error in rbindlist.c, type of 'thiscol' should have already been coerced to 'target'. please report to data.table issue tracker.");
-        memcpy((char *)DATAPTR(target) + ansloc * SIZEOF(thiscol),
-             (char *)DATAPTR(thiscol),
-             thislen * SIZEOF(thiscol));
+        memcpy(LOGICAL(target)+ansloc, LOGICAL(thiscol), thislen*SIZEOF(thiscol));
         break;
       default :
         error("Unsupported column type '%s'", type2char(TYPEOF(target)));
@@ -757,7 +760,6 @@ SEXP rbindlist(SEXP l, SEXP sexp_usenames, SEXP sexp_fill, SEXP idcol) {
       UNPROTECT(2);  // finalFactorLevels, factorLangSxp
     }
   }
-  if (factorLevels != R_NilValue) UNPROTECT_PTR(factorLevels);
 
   // fix for #1432, + more efficient to move the logic to C
   if (isidcol) {
@@ -804,32 +806,30 @@ SEXP rbindlist(SEXP l, SEXP sexp_usenames, SEXP sexp_fill, SEXP idcol) {
 SEXP chmatch2_old(SEXP x, SEXP table, SEXP nomatch) {
 
   R_len_t i, j, k, nx, li, si, oi;
-  SEXP dt, l, ans, order, start, lens, grpid, index;
   if (TYPEOF(nomatch) != INTSXP || length(nomatch) != 1) error("'nomatch' must be an integer of length 1");
   if (!length(x) || isNull(x)) return(allocVector(INTSXP, 0));
   if (TYPEOF(x) != STRSXP) error("'x' must be a character vector");
   nx=length(x);
   if (!length(table) || isNull(table)) {
-    ans = PROTECT(allocVector(INTSXP, nx));
+    SEXP ans = PROTECT(allocVector(INTSXP, nx));
     for (i=0; i<nx; i++) INTEGER(ans)[i] = INTEGER(nomatch)[0];
     UNPROTECT(1);
     return(ans);
   }
   if (TYPEOF(table) != STRSXP) error("'table' must be a character vector");
   // Done with special cases. On to the real deal.
-  l = PROTECT(allocVector(VECSXP, 2));
-  SET_VECTOR_ELT(l, 0, x);
-  SET_VECTOR_ELT(l, 1, table);
 
-  UNPROTECT(1); // l
-  dt = PROTECT(unlist2(l));
+  SEXP tt = PROTECT(allocVector(VECSXP, 2));
+  SET_VECTOR_ELT(tt, 0, x);
+  SET_VECTOR_ELT(tt, 1, table);
+  SEXP dt = PROTECT(unlist2(tt));
 
   // order - first time
-  order = PROTECT(fast_order(dt, 2, 1));
-  start = getAttrib(order, sym_starts);
-  lens  = PROTECT(uniq_lengths(start, length(order))); // length(order) = nrow(dt)
-  grpid = VECTOR_ELT(dt, 1);
-  index = VECTOR_ELT(dt, 2);
+  SEXP order = PROTECT(fast_order(dt, 2, 1));
+  SEXP start = getAttrib(order, sym_starts);
+  SEXP lens  = PROTECT(uniq_lengths(start, length(order))); // length(order) = nrow(dt)
+  SEXP grpid = VECTOR_ELT(dt, 1);
+  SEXP index = VECTOR_ELT(dt, 2);
 
   // replace dt[1], we don't need it anymore
   k=0;
@@ -840,12 +840,11 @@ SEXP chmatch2_old(SEXP x, SEXP table, SEXP nomatch) {
     k += j;
   }
   // order - again
-  UNPROTECT(2); // order, lens
   order = PROTECT(fast_order(dt, 2, 1));
   start = getAttrib(order, sym_starts);
   lens  = PROTECT(uniq_lengths(start, length(order)));
 
-  ans = PROTECT(allocVector(INTSXP, nx));
+  SEXP ans = PROTECT(allocVector(INTSXP, nx));
   k = 0;
   for (i=0; i<length(lens); i++) {
     li = INTEGER(lens)[i];
@@ -854,7 +853,7 @@ SEXP chmatch2_old(SEXP x, SEXP table, SEXP nomatch) {
     if (oi > nx-1) continue;
     INTEGER(ans)[oi] = (li == 2) ? INTEGER(index)[INTEGER(order)[si+1]-1]+1 : INTEGER(nomatch)[0];
   }
-  UNPROTECT(4); // order, lens, ans
+  UNPROTECT(7);
   return(ans);
 }
 

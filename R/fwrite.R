@@ -5,13 +5,13 @@ fwrite <- function(x, file="", append=FALSE, quote="auto",
            logical01=getOption("datatable.logical01", FALSE), # due to change to TRUE; see NEWS
            logicalAsInt=logical01,
            dateTimeAs = c("ISO","squash","epoch","write.csv"),
-           buffMB=8, nThread=getDTthreads(),
+           buffMB=8, nThread=getDTthreads(verbose),
            showProgress=getOption("datatable.showProgress", interactive()),
            verbose=getOption("datatable.verbose", FALSE)) {
   isLOGICAL = function(x) isTRUE(x) || identical(FALSE, x)  # it seems there is no isFALSE in R?
   na = as.character(na[1L]) # fix for #1725
   if (missing(qmethod)) qmethod = qmethod[1L]
-  if (missing(dateTimeAs)) dateTimeAs = dateTimeAs[1L]
+  if (missing(dateTimeAs)) { dateTimeAs = dateTimeAs[1L] }
   else if (length(dateTimeAs)>1L) stop("dateTimeAs must be a single string")
   dateTimeAs = chmatch(dateTimeAs, c("ISO","squash","epoch","write.csv"))-1L
   if (is.na(dateTimeAs)) stop("dateTimeAs must be 'ISO','squash','epoch' or 'write.csv'")
@@ -26,14 +26,18 @@ fwrite <- function(x, file="", append=FALSE, quote="auto",
   nThread = as.integer(nThread)
   # write.csv default is 'double' so fwrite follows suit. write.table's default is 'escape'
   # validate arguments
-  stopifnot(is.list(x), ncol(x) > 0L,
+  if (is.matrix(x)) { # coerce to data.table if input object is matrix
+    message("x being coerced from class: matrix to data.table")
+    x <- as.data.table(x)
+  }
+  stopifnot(is.list(x),
     identical(quote,"auto") || identical(quote,FALSE) || identical(quote,TRUE),
     is.character(sep) && length(sep)==1L && nchar(sep) == 1L,
     is.character(sep2) && length(sep2)==3L && nchar(sep2[2L])==1L,
     is.character(dec) && length(dec)==1L && nchar(dec) == 1L,
     dec != sep,  # sep2!=dec and sep2!=sep checked at C level when we know if list columns are present
     is.character(eol) && length(eol)==1L,
-    length(qmethod) == 1L && qmethod %in% c("double", "escape"),
+    length(qmethod) == 1L && qmethod %chin% c("double", "escape"),
     isLOGICAL(col.names), isLOGICAL(append), isLOGICAL(row.names),
     isLOGICAL(verbose), isLOGICAL(showProgress), isLOGICAL(logical01),
     length(na) == 1L, #1725, handles NULL or character(0) input
@@ -51,6 +55,20 @@ fwrite <- function(x, file="", append=FALSE, quote="auto",
     showProgress = FALSE
     eol = "\n"  # Rprintf() is used at C level which knows inside it to output \r\n on Windows. Otherwise extra \r is output.
   }
+  if (NCOL(x)==0L && file!="") {
+    if (file.exists(file)) {
+      warning("Input has no columns; doing nothing.",
+              if (!append)
+                paste("\nIf you intended to overwrite the file at",
+                      file, "with an empty one, please use file.remove first."))
+      return(invisible())
+    } else {
+      warning("Input has no columns; creating an empty file at '", file, "' and exiting.")
+      file.create(file)
+      return(invisible())
+    }
+  }
+  file <- enc2native(file) # CfwriteR cannot handle UTF-8 if that is not the native encoding, see #3078.
   .Call(CfwriteR, x, file, sep, sep2, eol, na, dec, quote, qmethod=="escape", append,
           row.names, col.names, logical01, dateTimeAs, buffMB, nThread,
           showProgress, verbose)

@@ -1,8 +1,17 @@
-fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=Inf,header="auto",na.strings=getOption("datatable.na.strings","NA"),stringsAsFactors=FALSE,verbose=getOption("datatable.verbose",FALSE),skip="__auto__",select=NULL,drop=NULL,colClasses=NULL,integer64=getOption("datatable.integer64","integer64"), col.names, check.names=FALSE, encoding="unknown", strip.white=TRUE, fill=FALSE, blank.lines.skip=FALSE, key=NULL, index=NULL, showProgress=getOption("datatable.showProgress",interactive()), data.table=getOption("datatable.fread.datatable",TRUE), nThread=getDTthreads(), logical01=getOption("datatable.logical01", FALSE), yaml=FALSE, autostart=NA)
+fread <- function(input="",file=NULL,text=NULL,cmd=NULL,sep="auto",sep2="auto",dec=".",quote="\"",nrows=Inf,header="auto",na.strings=getOption("datatable.na.strings","NA"),stringsAsFactors=FALSE,verbose=getOption("datatable.verbose",FALSE),skip="__auto__",select=NULL,drop=NULL,colClasses=NULL,integer64=getOption("datatable.integer64","integer64"), col.names, check.names=FALSE, encoding="unknown", strip.white=TRUE, fill=FALSE, blank.lines.skip=FALSE, key=NULL, index=NULL, showProgress=getOption("datatable.showProgress",interactive()), data.table=getOption("datatable.fread.datatable",TRUE), nThread=getDTthreads(verbose), logical01=getOption("datatable.logical01", FALSE), yaml=FALSE, autostart=NA)
 {
+  if (missing(input)+is.null(file)+is.null(text)+is.null(cmd) < 3L) stop("Used more than one of the arguments input=, file=, text= and cmd=.")
+  input_has_vars = length(all.vars(substitute(input)))>0L  # see news for v1.11.6
+  if (is.null(sep)) sep="\n"         # C level knows that \n means \r\n on Windows, for example
+  else {
+    stopifnot( length(sep)==1L, !is.na(sep), is.character(sep) )
+    if (sep=="") { sep="\n" }         # meaning readLines behaviour. The 3 values (NULL, "" or "\n") are equivalent.
+    else if (sep=="auto") sep=""      # sep=="" at C level means auto sep
+    else stopifnot( nchar(sep)==1L )  # otherwise an actual character to use as sep
+  }
   stopifnot( is.character(dec), length(dec)==1L, nchar(dec)==1L )
   # handle encoding, #563
-  if (length(encoding) != 1L || !encoding %in% c("unknown", "UTF-8", "Latin-1")) {
+  if (length(encoding) != 1L || !encoding %chin% c("unknown", "UTF-8", "Latin-1")) {
     stop("Argument 'encoding' must be 'unknown', 'UTF-8' or 'Latin-1'.")
   }
   isTrueFalse = function(x) isTRUE(x) || identical(FALSE, x)
@@ -17,47 +26,90 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
   stopifnot(is.numeric(nThread) && length(nThread)==1L)
   nThread=as.integer(nThread)
   stopifnot(nThread>=1L)
-  if (!missing(file)) {
-    if (!identical(input, "")) stop("You can provide 'input=' or 'file=', not both.")
-    if (!file.exists(file)) stop("File '",file,"' does not exist.")
-    if (isTRUE(file.info(file)$isdir)) stop("File '",file,"' is a directory. Not yet implemented.") # dir.exists() requires R v3.2+, #989
-    input = file
-  } else {
-    if (!is.character(input) || length(input)!=1L) {
-      stop("'input' must be a single character string containing a file name, a system command containing at least one space, a URL starting 'http[s]://', 'ftp[s]://' or 'file://', or, the input data itself containing at least one \\n or \\r")
+  if (!is.null(text)) {
+    if (!is.character(text)) stop("'text=' is type ", typeof(text), " but must be character.")
+    if (!length(text)) return(data.table())
+    if (length(text) > 1L) {
+      cat(text, file=(tmpFile<-tempfile()), sep="\n")  # avoid paste0() which could create a new very long single string in R's memory
+      file = tmpFile
+      on.exit(unlink(tmpFile), add=TRUE)
+    } else {
+      # avoid creating a tempfile() for single strings, which can be done a lot; e.g. in the test suite.
+      input = text
     }
-    if ( input == "" || length(grep('\\n|\\r', input)) ) {
+  }
+  else if (is.null(cmd)) {
+    if (!is.character(input) || length(input)!=1L) {
+      stop("input= must be a single character string containing a file name, a system command containing at least one space, a URL starting 'http[s]://', 'ftp[s]://' or 'file://', or, the input data itself containing at least one \\n or \\r")
+    }
+    if (input=="" || length(grep('\\n|\\r', input))) {
       # input is data itself containing at least one \n or \r
-    } else if (file.exists(input)) {
-      if (isTRUE(file.info(input)$isdir)) stop("File '",input,"' is a directory. Not yet implemented.")
     } else {
       if (substring(input,1L,1L)==" ") {
-        stop("Input argument is not a file name and contains no \\n or \\r, but starts with a space. Please remove the leading space.")
+        stop("input= contains no \\n or \\r, but starts with a space. Please remove the leading space, or use text=, file= or cmd=")
       }
-      # either a download or a system command, both to temp file
-      tmpFile = tempfile()
-      on.exit(unlink(tmpFile), add=TRUE)
       str6 = substring(input,1L,6L)   # avoid grepl() for #2531
       str7 = substring(input,1L,7L)
       str8 = substring(input,1L,8L)
       if (str7=="ftps://" || str8=="https://") {
+        # nocov start
         if (!requireNamespace("curl", quietly = TRUE))
-            stop("Input URL requires https:// connection for which fread() requires 'curl' package, but cannot be found. Please install curl using 'install.packages('curl')'.")
+          stop("Input URL requires https:// connection for which fread() requires 'curl' package which cannot be found. Please install 'curl' using 'install.packages('curl')'.") # nocov
+        tmpFile = tempfile(fileext = paste0(".",tools::file_ext(input)))  # retain .gz extension in temp filename so it knows to be decompressed further below
         curl::curl_download(input, tmpFile, mode="wb", quiet = !showProgress)
+        file = tmpFile
+        on.exit(unlink(tmpFile), add=TRUE)
+        # nocov end
       }
       else if (str6=="ftp://" || str7== "http://" || str7=="file://") {
+        # nocov start
         method = if (str7=="file://") "internal" else getOption("download.file.method", default="auto")
         # force "auto" when file:// to ensure we don't use an invalid option (e.g. wget), #1668
+        tmpFile = tempfile(fileext = paste0(".",tools::file_ext(input)))
         download.file(input, tmpFile, method=method, mode="wb", quiet=!showProgress)
         # In text mode on Windows-only, R doubles up \r to make \r\r\n line endings. mode="wb" avoids that. See ?connections:"CRLF"
+        file = tmpFile
+        on.exit(unlink(tmpFile), add=TRUE)
+        # nocov end
       }
-      else if (length(grep(' ', input))) {
-        (if (.Platform$OS.type == "unix") system else shell)(paste0('(', input, ') > ', tmpFile))
+      else if (length(grep(' ', input)) && !file.exists(input)) {  # file name or path containing spaces is not a command
+        cmd = input
+        if (input_has_vars && getOption("datatable.fread.input.cmd.message", TRUE)) {
+          message("Taking input= as a system command ('",cmd,"') and a variable has been used in the expression passed to `input=`. Please use fread(cmd=...). There is a security concern if you are creating an app, and the app could have a malicious user, and the app is not running in a secure envionment; e.g. the app is running as root. Please read item 5 in the NEWS file for v1.11.6 for more information and for the option to suppress this message.")
+        }
       }
-      else stop("File '",input,"' does not exist; getwd()=='", getwd(), "'",
-                ". Include correct full path, or one or more spaces to consider the input a system command.")
-      input = tmpFile  # the file name
+      else {
+        file = input   # filename
+      }
     }
+  }
+  if (!is.null(cmd)) {
+    (if (.Platform$OS.type == "unix") system else shell)(paste0('(', cmd, ') > ', tmpFile<-tempfile()))
+    file = tmpFile
+    on.exit(unlink(tmpFile), add=TRUE)
+  }
+  if (!is.null(file)) {
+    file_info = file.info(file)
+    if (is.na(file_info$size)) stop("File '",file,"' does not exist or is non-readable. getwd()=='", getwd(), "'")
+    if (isTRUE(file_info$isdir)) stop("File '",file,"' is a directory. Not yet implemented.") # dir.exists() requires R v3.2+, #989
+    if (!file_info$size) {
+      warning("File '", file, "' has size 0. Returning a NULL ",
+              if (data.table) 'data.table' else 'data.frame', ".")
+      return(if (data.table) data.table(NULL) else data.frame(NULL))
+    }
+    ext2 = substring(file, nchar(file)-2L, nchar(file))   # last 3 characters ".gz"
+    ext3 = substring(file, nchar(file)-3L, nchar(file))   # last 4 characters ".bz2"
+    if (ext2==".gz" || ext3==".bz2") {
+      if (!requireNamespace("R.utils", quietly = TRUE))
+        stop("To read gz and bz2 files directly, fread() requires 'R.utils' package which cannot be found. Please install 'R.utils' using 'install.packages('R.utils')'.") # nocov
+      FUN = if (ext2==".gz") gzfile else bzfile
+      R.utils::decompressFile(file, decompFile<-tempfile(), ext=NULL, FUN=FUN, remove=FALSE)   # ext is not used by decompressFile when destname is supplied, but isn't optional
+      file = decompFile   # don't use 'tmpFile' symbol again, as tmpFile might be the http://domain.org/file.csv.gz download
+      on.exit(unlink(decompFile), add=TRUE)
+    }
+    file = enc2native(file) # CfreadR cannot handle UTF-8 if that is not the native encoding, see #3078.
+
+    input = file
   }
   if (!missing(autostart)) warning("'autostart' is now deprecated and ignored. Consider skip='string' or skip=n");
   if (is.logical(colClasses)) {
@@ -72,7 +124,6 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
     }
   }
   stopifnot(length(skip)==1L, !is.na(skip), is.character(skip) || is.numeric(skip))
-<<<<<<< HEAD
   if (skip=="__auto__") {
     if (yaml) {
       skip=0L
@@ -80,6 +131,22 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
       skip=-1L   # skip="string" so long as "string" is not "__auto__". Best conveys to user something is automatic there (than -1 or NA).
     }
   } else if (is.double(skip)) skip = as.integer(skip)
+  stopifnot(is.null(na.strings) || is.character(na.strings))
+  tt = grep("^\\s+$", na.strings)
+  if (length(tt)) {
+    msg = paste0('na.strings[', tt[1L], ']=="',na.strings[tt[1L]],'" consists only of whitespace, ignoring. ')
+    if (strip.white) {
+      if (any(na.strings=="")) {
+        warning(msg, 'strip.white==TRUE (default) and "" is present in na.strings, so any number of spaces in string columns will already be read as <NA>.')
+      } else {
+        warning(msg, 'Since strip.white=TRUE (default), use na.strings="" to specify that any number of spaces in a string column should be read as <NA>.')
+      }
+      na.strings = na.strings[-tt]
+    } else {
+      stop(msg, 'But strip.white=FALSE. Use strip.white=TRUE (default) together with na.strings="" to turn any number of spaces in string columns into <NA>')
+    }
+    # whitespace at the beginning or end of na.strings is checked at C level and is an error there; test 1804
+  }
   if (yaml) {
     if (!requireNamespace('yaml', quietly = TRUE))
       stop("'data.table' relies on the package 'yaml' to ",
@@ -107,7 +174,7 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
            '(expecting something matching regex "', yaml_border_re,
            '"); please check your input and try again.')
     }
-
+    
     yaml_comment_re = '^#'
     yaml_string = character(0L)
     while (TRUE) {
@@ -127,7 +194,7 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
       yaml_string = paste(yaml_string, this_line, sep='\n')
     }
     close(f) # when #561 is implemented, no need to close f.
-
+    
     yaml_header = yaml::yaml.load(yaml_string)
     yaml_names = names(yaml_header)
     if (verbose) cat('Processed', n_read, 'lines of YAML',
@@ -146,7 +213,7 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
       )
       new_types = synonms[list(new_types)]$r_type
       new_names = sapply(yaml_header$fields[!null_idx], `[[`, 'name')
-
+      
       # resolve any conflicts with colClasses, if supplied;
       #   colClasses (if present) is already in list form by now
       if (!is.null(colClasses)) {
@@ -212,42 +279,13 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
     }
     if (is.integer(skip)) skip = skip + n_read
   }
-
-  if (is.null(sep)) sep="\n"         # C level knows that \n means \r\n on Windows, for example
-  else {
-    stopifnot( length(sep)==1L, !is.na(sep), is.character(sep) )
-    if (sep=="") sep="\n"             # meaning readLines behaviour. The 3 values (NULL, "" or "\n") are equivalent.
-    else if (sep=="auto") sep=""      # sep=="" at C level means auto sep
-    else stopifnot( nchar(sep)==1L )  # otherwise an actual character to use as sep
-  }
-
-=======
-  if (skip=="__auto__") skip=-1L   # skip="string" so long as "string" is not "__auto__". Best conveys to user something is automatic there (than -1 or NA).
-  if (is.double(skip)) skip = as.integer(skip)
-  stopifnot(is.null(na.strings) || is.character(na.strings))
-  tt = grep("^\\s+$", na.strings)
-  if (length(tt)) {
-    msg = paste0('na.strings[', tt[1L], ']=="',na.strings[tt[1L]],'" consists only of whitespace, ignoring. ')
-    if (strip.white) {
-      if (any(na.strings=="")) {
-        warning(msg, 'strip.white==TRUE (default) and "" is present in na.strings, so any number of spaces in string columns will already be read as <NA>.')
-      } else {
-        warning(msg, 'Since strip.white=TRUE (default), use na.strings="" to specify that any number of spaces in a string column should be read as <NA>.')
-      }
-      na.strings = na.strings[-tt]
-    } else {
-      stop(msg, 'But strip.white=FALSE. Use strip.white=TRUE (default) together with na.strings="" to turn any number of spaces in string columns into <NA>')
-    }
-    # whitespace at the beginning or end of na.strings is checked at C level and is an error there; test 1804
-  }
->>>>>>> 3733e61e2e81ccfad509f199bdba2179fd7fa143
   warnings2errors = getOption("warn") >= 2
   ans = .Call(CfreadR,input,sep,dec,quote,header,nrows,skip,na.strings,strip.white,blank.lines.skip,
               fill,showProgress,nThread,verbose,warnings2errors,logical01,select,drop,colClasses,integer64,encoding)
   nr = length(ans[[1L]])
   if ((!"bit64" %chin% loadedNamespaces()) && any(sapply(ans,inherits,"integer64"))) require_bit64()
   setattr(ans,"row.names",.set_row_names(nr))
-
+  
   if (isTRUE(data.table)) {
     setattr(ans, "class", c("data.table", "data.frame"))
     alloc.col(ans)
@@ -262,7 +300,7 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
   if (stringsAsFactors)
     cols = which(vapply(ans, is.character, TRUE))
   else if (length(colClasses)) {
-    if (is.list(colClasses) && "factor" %in% names(colClasses))
+    if (is.list(colClasses) && "factor" %chin% names(colClasses))
       cols = colClasses[["factor"]]
     else if (is.character(colClasses) && "factor" %chin% colClasses)
       cols = which(colClasses=="factor")
@@ -272,7 +310,7 @@ fread <- function(input="",file,sep="auto",sep2="auto",dec=".",quote="\"",nrows=
   if (!is.null(select)) {
     # fix for #1445
     if (is.numeric(select)) {
-      reorder = if (length(o <- forderv(select))) o else seq_along(select)
+      reorder = frank(select)
     } else {
       reorder = select[select %chin% names(ans)]
       # any missing columns are warning about in fread.c and skipped
@@ -325,7 +363,7 @@ setfactor <- function(x, cols, verbose) {
     setattr(ans, 'class', 'factor')
   }
   if (length(cols)) {
-    if (verbose) cat("Converting column(s) [", paste(names(x)[cols], collapse = ", "), "] from 'char' to 'factor'\n", sep = "")
+    if (verbose) cat("Converting column(s) ", brackify(names(x)[cols]), " from 'char' to 'factor'\n", sep = "")
     for (j in cols) set(x, j = j, value = as_factor(.subset2(x, j)))
   }
   invisible(x)

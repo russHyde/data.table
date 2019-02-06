@@ -2,7 +2,7 @@ setkey <- function(x, ..., verbose=getOption("datatable.verbose"), physical=TRUE
 {
   if (is.character(x)) stop("x may no longer be the character name of the data.table. The possibility was undocumented and has been removed.")
   cols = as.character(substitute(list(...))[-1L])
-  if (!length(cols)) cols=colnames(x)
+  if (!length(cols)) { cols=colnames(x) }
   else if (identical(cols,"NULL")) cols=NULL
   setkeyv(x, cols, verbose=verbose, physical=physical)
 }
@@ -50,19 +50,28 @@ setkeyv <- function(x, cols, verbose=getOption("datatable.verbose"), physical=TR
   } else {
     # remove backticks from cols
     cols <- gsub("`", "", cols)
-    miss = !(cols %in% colnames(x))
-    if (any(miss)) stop("some columns are not in the data.table: " %+% cols[miss])
+    miss = !(cols %chin% colnames(x))
+    if (any(miss)) stop("some columns are not in the data.table: ", paste(cols[miss], collapse=","))
   }
 
   ## determine, whether key is already present:
   if (identical(key(x),cols)) {
-    ## key is present, nothing needs to be done
+    if (!physical) {
+      ## create index as integer() because already sorted by those columns
+      if (is.null(attr(x,"index",exact=TRUE))) setattr(x, "index", integer())
+      setattr(attr(x,"index",exact=TRUE), paste0("__", cols, collapse=""), integer())
+    }
     return(invisible(x))
   } else if(identical(head(key(x), length(cols)), cols)){
-    ## key is present but x has a longer key. No sorting needed, only attribute is changed to shorter key.
-    setattr(x,"sorted",cols)
+    if (!physical) {
+      ## create index as integer() because already sorted by those columns
+      if (is.null(attr(x,"index",exact=TRUE))) setattr(x, "index", integer())
+      setattr(attr(x,"index",exact=TRUE), paste0("__", cols, collapse=""), integer())
+    } else {
+      ## key is present but x has a longer key. No sorting needed, only attribute is changed to shorter key.
+      setattr(x,"sorted",cols)
+    }
     return(invisible(x))
-    ## maybe additional speedup can be achieved if part of the key is already present?
   }
 
   if (".xi" %chin% names(x)) stop("x contains a column called '.xi'. Conflicts with internal use by data.table.")
@@ -70,9 +79,10 @@ setkeyv <- function(x, cols, verbose=getOption("datatable.verbose"), physical=TR
     .xi = x[[i]]  # [[ is copy on write, otherwise checking type would be copying each column
     if (!typeof(.xi) %chin% c("integer","logical","character","double")) stop("Column '",i,"' is type '",typeof(.xi),"' which is not supported as a key column type, currently.")
   }
-  if (!is.character(cols) || length(cols)<1L) stop("'cols' should be character at this point in setkey")
+  if (!is.character(cols) || length(cols)<1L) stop("Internal error. 'cols' should be character at this point in setkey; please report.") # nocov
   if (verbose) {
-    tt = system.time(o <- forderv(x, cols, sort=TRUE, retGrp=FALSE))  # system.time does a gc, so we don't want this always on, until refcnt is on by default in R
+    tt = suppressMessages(system.time(o <- forderv(x, cols, sort=TRUE, retGrp=FALSE)))  # system.time does a gc, so we don't want this always on, until refcnt is on by default in R
+    # suppress needed for tests 644 and 645 in verbose mode
     cat("forder took", tt["user.self"]+tt["sys.self"], "sec\n")
   } else {
     o <- forderv(x, cols, sort=TRUE, retGrp=FALSE)
@@ -85,7 +95,7 @@ setkeyv <- function(x, cols, verbose=getOption("datatable.verbose"), physical=TR
   setattr(x,"index",NULL)   # TO DO: reorder existing indexes likely faster than rebuilding again. Allow optionally. Simpler for now to clear.
   if (length(o)) {
     if (verbose) {
-      tt = system.time(.Call(Creorder,x,o))
+      tt = suppressMessages(system.time(.Call(Creorder,x,o)))
       cat("reorder took", tt["user.self"]+tt["sys.self"], "sec\n")
     } else {
       .Call(Creorder,x,o)
@@ -102,9 +112,18 @@ key <- function(x) attr(x,"sorted",exact=TRUE)
 indices <- function(x, vectors = FALSE) {
   ans = names(attributes(attr(x,"index",exact=TRUE)))
   if (is.null(ans)) return(ans) # otherwise character() gets returned by next line
-  ans <- gsub("^__","",ans)
+  ans <- gsub("^__","",ans)     # the leading __ is internal only, so remove that in result
   if (isTRUE(vectors))
     ans <- strsplit(ans, "__", fixed = TRUE)
+  ans
+}
+
+getindex <- function(x, name) {
+  # name can be "col", or "col1__col2", or c("col1","col2")
+  ans = attr(attr(x, 'index'), paste0("__",name,collapse=""), exact=TRUE)
+  if (!is.null(ans) && (!is.integer(ans) || (length(ans)!=nrow(x) && length(ans)!=0L))) {
+    stop("Internal error: index '",name,"' exists but is invalid")   # nocov
+  }
   ans
 }
 
@@ -182,8 +201,8 @@ forderv <- function(x, by=seq_along(x), retGrp=FALSE, sort=TRUE, order=1L, na.la
       if (anyNA(w)) stop("'by' contains '",by[is.na(w)][1],"' which is not a column name")
       by = w
     }
-    else if (typeof(by)=="double" && isReallyReal(by)) {
-      stop("'by' is type 'double' but one or more items in it are not whole integers")
+    else if (isReallyReal(by)) {
+      stop("'by' is type 'double' and one or more items in it are not whole integers")
     }
     by = as.integer(by)
     if ( (length(order) != 1L && length(order) != length(by)) || any(!order %in% c(1L, -1L)) )
@@ -200,7 +219,7 @@ forder <- function(x, ..., na.last=TRUE, decreasing=FALSE)
   if (ncol(x) == 0L) stop("Attempting to order a 0-column data.table.")
   if (is.na(decreasing) || !is.logical(decreasing)) stop("'decreasing' must be logical TRUE or FALSE")
   cols = substitute(list(...))[-1L]
-  if (identical(as.character(cols),"NULL") || !length(cols)) return(NULL) # to provide the same output as base::order
+  if (identical(as.character(cols),"NULL") || !length(cols) || (length(cols) == 1L && !nzchar(cols))) return(NULL) # to provide the same output as base::order
   ans = x
   order = rep(1L, length(cols))
   if (length(cols)) {
@@ -240,13 +259,10 @@ forder <- function(x, ..., na.last=TRUE, decreasing=FALSE)
   o
 }
 
-fsort <- function(x, decreasing = FALSE, na.last = FALSE, internal=FALSE, verbose=FALSE, ...)
+fsort <- function(x, decreasing=FALSE, na.last=FALSE, internal=FALSE, verbose=FALSE, ...)
 {
   containsNAs <- FALSE
-  if (typeof(x)=="double" && !decreasing) {
-    containsNAs <- anyNA(x) ## just do this if all other conditions are met since it is relatively expensive
-  }
-  if(typeof(x)=="double" && !decreasing && !containsNAs){
+  if (typeof(x)=="double" && !decreasing && !(containsNAs<-anyNA(x))) {
       if (internal) stop("Internal code should not be being called on type double")
       return(.Call(Cfsort, x, verbose))
   }
@@ -255,13 +271,13 @@ fsort <- function(x, decreasing = FALSE, na.last = FALSE, internal=FALSE, verbos
     # The only places internally we use fsort internally (3 calls, all on integer) have had internal=TRUE added for now.
     # TODO: implement integer and character in Cfsort and remove this branch and warning
     if (!internal){
-      if(typeof(x) != "double") warning("Input is not a vector of type double. New parallel sort has only been done for double vectors so far. Using one thread.")
-      if(decreasing)  warning("New parallel sort has not been implemented for decreasing=TRUE so far. Using one thread.")
-      if(containsNAs) warning("New parallel sort has not been implemented for vectors containing NA values so far. Using one thread.")
+      if (typeof(x)!="double") warning("Input is not a vector of type double. New parallel sort has only been done for double vectors so far. Using one thread.")
+      if (decreasing)  warning("New parallel sort has not been implemented for decreasing=TRUE so far. Using one thread.")
+      if (containsNAs) warning("New parallel sort has not been implemented for vectors containing NA values so far. Using one thread.")
     }
-    orderArg = if(decreasing) -1 else 1
+    orderArg = if (decreasing) -1 else 1
     o = forderv(x, order=orderArg, na.last=na.last)
-    return( if (length(o)) x[o] else x )   # TO DO: document this shortcut for already-sorted
+    return( if (length(o)) x[o] else x )
   }
 }
 
@@ -292,7 +308,7 @@ setorder <- function(x, ..., na.last=FALSE)
   setorderv(x, cols, order, na.last)
 }
 
-setorderv <- function(x, cols, order=1L, na.last=FALSE)
+setorderv <- function(x, cols = colnames(x), order=1L, na.last=FALSE)
 {
   if (is.null(cols)) return(x)
   if (!is.data.frame(x)) stop("x must be a data.frame or data.table")
@@ -304,27 +320,22 @@ setorderv <- function(x, cols, order=1L, na.last=FALSE)
     return(x)
   }
   if (!all(nzchar(cols))) stop("cols contains some blanks.")     # TODO: probably I'm checking more than necessary here.. there are checks in 'forderv' as well
-  if (!length(cols)) {
-    cols = colnames(x)   # All columns in the data.table, usually a few when used in this form
-  } else {
-    # remove backticks from cols
-    cols <- gsub("`", "", cols)
-    miss = !(cols %in% colnames(x))
-    if (any(miss)) stop("some columns are not in the data.table: " %+% cols[miss])
-  }
-  if (".xi" %in% colnames(x)) stop("x contains a column called '.xi'. Conflicts with internal use by data.table.")
+  # remove backticks from cols
+  cols <- gsub("`", "", cols)
+  miss = !(cols %chin% colnames(x))
+  if (any(miss)) stop("some columns are not in the data.table: ", paste(cols[miss], collapse=","))
+  if (".xi" %chin% colnames(x)) stop("x contains a column called '.xi'. Conflicts with internal use by data.table.")
   for (i in cols) {
     .xi = x[[i]]  # [[ is copy on write, otherwise checking type would be copying each column
     if (!typeof(.xi) %chin% c("integer","logical","character","double")) stop("Column '",i,"' is type '",typeof(.xi),"' which is not supported for ordering currently.")
   }
-  if (!is.character(cols) || length(cols)<1L) stop("'cols' should be character at this point in setkey.")
+  if (!is.character(cols) || length(cols)<1L) stop("Internal error. 'cols' should be character at this point in setkey; please report.") # nocov
 
   o = forderv(x, cols, sort=TRUE, retGrp=FALSE, order=order, na.last=na.last)
   if (length(o)) {
     .Call(Creorder, x, o)
     if (is.data.frame(x) & !is.data.table(x)) {
-      .Call(Creorder, rn <- rownames(x), o)
-      setattr(x, 'row.names', rn)
+      setattr(x, 'row.names', rownames(x)[o])
     }
     setattr(x, 'sorted', NULL) # if 'forderv' is not 0-length, it means order has changed. So, set key to NULL, else retain key.
     setattr(x, 'index', NULL)  # remove secondary keys too. These could be reordered and retained, but simpler and faster to remove
@@ -391,13 +402,14 @@ CJ <- function(..., sorted = TRUE, unique = FALSE)
   }
   setattr(l, "row.names", .set_row_names(length(l[[1L]])))
   setattr(l, "class", c("data.table", "data.frame"))
-
-  if (is.null(vnames <- names(l)))
-    vnames = vector("character", length(l))
-  if (any(tt <- vnames == "")) {
-    vnames[tt] = paste0("V", which(tt))
-    setattr(l, "names", vnames)
+  if (getOption("datatable.CJ.names", TRUE)) {  # added as FALSE in v1.11.6 with NEWS item saying TRUE in v1.12.0. TODO: remove in v1.13.0
+    vnames = name_dots(...)$vnames
+  } else {
+    if (is.null(vnames <- names(l))) vnames = paste0("V", seq_len(length(l)))
+    else if (any(tt <- vnames=="")) vnames[tt] = paste0("V", which(tt))
   }
+  setattr(l, "names", vnames)
+
   l <- alloc.col(l)  # a tiny bit wasteful to over-allocate a fixed join table (column slots only), doing it anyway for consistency, and it's possible a user may wish to use SJ directly outside a join and would expect consistent over-allocation.
   if (sorted) {
     if (!dups) setattr(l, 'sorted', names(l))

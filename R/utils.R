@@ -41,13 +41,6 @@ take <- function(x, n=1L)
 }
 # TODO: Implement take as UseMethod. Specific methods for each type.
 
-# plus
-"%+%" <- function(x,y)
-UseMethod("%+%")
-
-"%+%.default" <- function(x,y) paste0(paste(x,collapse=","),paste(y,collapse=","))
-# we often construct warning msgs with a msg followed by several items of a vector, so %+% is for convenience
-
 require_bit64 = function() {
   # called in fread and print when they see integer64 columns are present
   if (!requireNamespace("bit64",quietly=TRUE))
@@ -71,3 +64,52 @@ vapply_1i <- function (x, fun, ..., use.names = TRUE) {
 
 more = function(f) system(paste("more",f))    # nocov  (just a dev helper)
 
+# helper used to auto-name columns in data.table(x,y) as c("x","y"), CJ(x,y) and similar
+# naming of unnested matrices still handled by data.table()
+name_dots <- function(...) {
+  dot_sub <- as.list(substitute(list(...)))[-1L]
+  vnames = names(dot_sub)
+  if (is.null(vnames)) {
+    vnames = rep.int("", length(dot_sub))
+    novname = rep.int(TRUE, length(dot_sub))
+  } else {
+    vnames[is.na(vnames)] = ""
+    if (any(vnames==".SD")) stop("A column may not be called .SD. That has special meaning.")
+    novname = vnames==""
+  }
+  for (i in which(novname)) {
+    if ((tmp <- deparse(dot_sub[[i]])[1L]) == make.names(tmp))
+      vnames[i] = tmp
+  }
+  still_empty = vnames==""
+  if (any(still_empty)) vnames[still_empty] = paste0("V", which(still_empty))
+  list(vnames=vnames, novname=novname)
+}
+
+# convert a vector like c(1, 4, 3, 2) into a string like [1, 4, 3, 2]
+#   (common aggregation method for error messages)
+brackify = function(x) {
+  # arbitrary cutoff
+  if (length(x) > 10L) x = c(x[1:10], '...')
+  sprintf('[%s]', paste(x, collapse = ', '))
+}
+
+# patterns done via NSE in melt.data.table and .SDcols in `[.data.table`
+do_patterns = function(pat_sub, all_cols) {
+  # received as substitute(patterns(...))
+  pat_sub = as.list(pat_sub)[-1L]
+  # identify cols = argument if present
+  idx = which(names(pat_sub) == "cols")
+  if (length(idx)) {
+    cols = eval(pat_sub[["cols"]], parent.frame(2L))
+    pat_sub = pat_sub[-idx]
+  } else cols = all_cols
+  pats = lapply(pat_sub, eval, parent.frame(2L))
+  matched = patterns(pats, cols=cols)
+  # replace with lengths when R 3.2.0 dependency arrives
+  if (length(idx <- which(sapply(matched, length) == 0L)))
+    stop('Pattern', if (length(idx) > 1L) 's', ' not found: [',
+         paste(pats[idx], collapse = ', '), ']')
+
+  return(matched)
+}

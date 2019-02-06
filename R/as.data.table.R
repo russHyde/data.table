@@ -6,7 +6,7 @@ as.data.table <-function(x, keep.rownames=FALSE, ...)
 }
 
 as.data.table.default <- function(x, ...){
-  setDT(as.data.frame(x, ...))[]
+  as.data.table(as.data.frame(x, ...)) # we cannot assume as.data.frame will do copy, thus setDT changed to as.data.table #3230
 }
 
 as.data.table.factor <- as.data.table.ordered <-
@@ -53,6 +53,7 @@ as.data.table.matrix <- function(x, keep.rownames=FALSE, ...) {
   nrows <- d[1L]
   ncols <- d[2L]
   ic <- seq_len(ncols)
+  if (!ncols) return(null.data.table())
 
   value <- vector("list", ncols)
   if (mode(x) == "character") {
@@ -92,8 +93,8 @@ as.data.table.array <- function(x, keep.rownames=FALSE, sorted=TRUE, value.name=
   val = rev(if (is.null(dnx)) lapply(dim(x), seq.int) else dnx)
   if (is.null(names(val)) || all(!nzchar(names(val))))
     setattr(val, 'names', paste0("V", rev(seq_along(val))))
-  if (value.name %in% names(val))
-    stop(sprintf("Argument 'value.name' should not overlap with column names in result: %s.", paste(rev(names(val)), collapse=", ")))
+  if (value.name %chin% names(val))
+    stop("Argument 'value.name' should not overlap with column names in result: ", brackify(rev(names(val))))
   N = NULL
   ans = data.table(do.call(CJ, c(val, sorted=FALSE)), N=as.vector(x))
   if (isTRUE(na.rm))
@@ -157,9 +158,11 @@ as.data.table.list <- function(x, keep.rownames=FALSE, ...) {
 # tests and as.data.table.data.frame) I've commented #527
 # for now. This addresses #1078 and #1128
 .resetclass <- function(x, class) {
+  if (length(class)!=1L)
+    stop("class must be length 1") # nocov
   cx = class(x)
-  n  = chmatch(class, cx)
-  cx = unique( c("data.table", "data.frame", tail(cx, length(cx)-n)) )
+  n  = chmatch(class, cx)   # chmatch accepts legth(class)>1 but next line requires length(n)==1
+  unique( c("data.table", "data.frame", tail(cx, length(cx)-n)) )
 }
 
 as.data.table.data.frame <- function(x, keep.rownames=FALSE, ...) {

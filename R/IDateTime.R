@@ -10,8 +10,14 @@ as.IDate.default <- function(x, ..., tz = attr(x, "tzone")) {
   as.IDate(as.Date(x, tz = tz, ...))
 }
 
-as.IDate.numeric <- function(x, ...) {
-  structure(as.integer(x), class=c("IDate","Date"))
+as.IDate.numeric <- function(x, origin = "1970-01-01", ...) {
+  if (origin=="1970-01-01") {
+    # standard epoch
+    structure(as.integer(x), class=c("IDate","Date"))
+  } else {
+    # only call expensive as.IDate.character if we have to
+    as.IDate(origin, ...) + as.integer(x)
+  }
 }
 
 as.IDate.Date <- function(x, ...) {
@@ -20,7 +26,7 @@ as.IDate.Date <- function(x, ...) {
 
 as.IDate.POSIXct <- function(x, tz = attr(x, "tzone"), ...) {
   if (is.null(tz)) tz = "UTC"
-  if (tz %in% c("UTC", "GMT"))
+  if (tz %chin% c("UTC", "GMT"))
     structure(as.integer(x) %/% 86400L, class=c("IDate","Date"))
   else
     as.IDate(as.Date(x, tz = tz, ...))
@@ -65,9 +71,8 @@ round.IDate <- function (x, digits=c("weeks", "months", "quarters", "years"), ..
     return(e1)
   if (inherits(e1, "difftime") || inherits(e2, "difftime"))
     stop("difftime objects may not be added to IDate. Use plain integer instead of difftime.")
-  if ( (storage.mode(e1)=="double" && isReallyReal(e1)) ||
-       (storage.mode(e2)=="double" && isReallyReal(e2)) ) {
-    return(`+.Date`(e1,e2))
+  if (isReallyReal(e1) || isReallyReal(e2)) {
+    return(`+.Date`(e1, e2))
     # IDate doesn't support fractional days; revert to base Date
   }
   if (inherits(e1, "Date") && inherits(e2, "Date"))
@@ -79,14 +84,18 @@ round.IDate <- function (x, digits=c("weeks", "months", "quarters", "years"), ..
   if (!inherits(e1, "IDate"))
     stop("can only subtract from \"IDate\" objects")
   if (storage.mode(e1) != "integer")
-    stop("Internal error: storage mode of IDate is somehow no longer integer")
+    stop("Internal error: storage mode of IDate is somehow no longer integer") # nocov
   if (nargs() == 1L)
     stop("unary - is not defined for \"IDate\" objects")
   if (inherits(e2, "difftime"))
     stop("difftime objects may not be subtracted from IDate. Use plain integer instead of difftime.")
-  if ( storage.mode(e2)=="double" && isReallyReal(e2) ) {
-    return(`-.Date`(as.Date(e1),as.Date(e2)))
-    # IDate doesn't support fractional days so revert to base Date
+
+  if ( isReallyReal(e2) ) {
+    # IDate deliberately doesn't support fractional days so revert to base Date
+    return(base::`-.Date`(as.Date(e1), e2))
+    # can't call base::.Date directly (last line of base::`-.Date`) as tried in PR#3168 because
+    # i) ?.Date states "Internal objects in the base package most of which are only user-visible because of the special nature of the base namespace."
+    # ii) .Date was newly exposed in R some time after 3.4.4
   }
   ans = as.integer(unclass(e1) - unclass(e2))
   if (!inherits(e2, "Date")) class(ans) = c("IDate","Date")
@@ -103,21 +112,27 @@ round.IDate <- function (x, digits=c("weeks", "months", "quarters", "years"), ..
 as.ITime <- function(x, ...) UseMethod("as.ITime")
 
 as.ITime.default <- function(x, ...) {
-  as.ITime(as.POSIXlt(x, ...))
+  as.ITime(as.POSIXlt(x, ...), ...)
 }
 
 as.ITime.POSIXct <- function(x, tz = attr(x, "tzone"), ...) {
   if (is.null(tz)) tz = "UTC"
-  if (tz %in% c("UTC", "GMT")) as.ITime(unclass(x), ...) else as.ITime(as.POSIXlt(x, tz = tz, ...))
+  if (tz %chin% c("UTC", "GMT")) as.ITime(unclass(x), ...) else as.ITime(as.POSIXlt(x, tz = tz, ...), ...)
 }
 
-as.ITime.numeric <- function(x, ...) {
-  structure(as.integer(x) %% 86400L, class = "ITime")
+as.ITime.numeric <- function(x, ms = 'truncate', ...) {
+  secs = switch(ms,
+                'truncate' = as.integer(x),
+                'nearest' = as.integer(round(x)),
+                'ceil' = as.integer(ceiling(x)),
+                stop("Valid options for ms are 'truncate', ",
+                     "'nearest', and 'ceil'."))
+  structure(secs %% 86400L, class = "ITime")
 }
 
 as.ITime.character <- function(x, format, ...) {
   x <- unclass(x)
-  if (!missing(format)) return(as.ITime(strptime(x, format = format, ...)))
+  if (!missing(format)) return(as.ITime(strptime(x, format = format, ...), ...))
   # else allow for mixed formats, such as test 1189 where seconds are caught despite varying format
   y <- strptime(x, format = "%H:%M:%OS", ...)
   w <- which(is.na(y))
@@ -133,16 +148,33 @@ as.ITime.character <- function(x, format, ...) {
     new <- strptime(x[w], format = f, ...)
     nna <- !is.na(new)
     if (any(nna)) {
-      y[ w[nna] ] <- new
+      y[ w[nna] ] <- new[nna]
       w <- w[!nna]
     }
   }
-  return(as.ITime(y))
+  return(as.ITime(y, ...))
 }
 
-as.ITime.POSIXlt <- function(x, ...) {
-  structure(with(x, as.integer(sec) + min * 60L + hour * 3600L),
+as.ITime.POSIXlt <- function(x, ms = 'truncate', ...) {
+  secs = switch(ms,
+                'truncate' = as.integer(x$sec),
+                'nearest' = as.integer(round(x$sec)),
+                'ceil' = as.integer(ceiling(x$sec)),
+                stop("Valid options for ms are 'truncate', ",
+                     "'nearest', and 'ceil'."))
+  structure(with(x, secs + min * 60L + hour * 3600L),
         class = "ITime")
+}
+
+as.ITime.times <- function(x, ms = 'truncate', ...) {
+  secs <- 86400 * (unclass(x) %% 1)
+  secs = switch(ms,
+                'truncate' = as.integer(secs),
+                'nearest' = as.integer(round(secs)),
+                'ceil' = as.integer(ceiling(secs)),
+                stop("Valid options for ms are 'truncate', ",
+                     "'nearest', and 'ceil'."))
+  structure(secs, class = "ITime")
 }
 
 as.character.ITime <- format.ITime <- function(x, ...) {
@@ -222,8 +254,8 @@ as.POSIXct.IDate <- function(x, tz = "UTC", time = 0, ...) {
   as.POSIXct(as.POSIXlt(x, ...), tz, ...) + time
 }
 
-as.POSIXct.ITime <- function(x, tz = "UTC", date = as.Date(Sys.time()), ...) {
-  if (missing(date) && any(class(tz) %in% c("Date", "IDate", "POSIXt", "dates"))) {
+as.POSIXct.ITime <- function(x, tz = "UTC", date = Sys.Date(), ...) {
+  if (missing(date) && inherits(tz, c("Date", "IDate", "POSIXt", "dates"))) {
     date <- tz # allows you to use date as the 2nd argument
     tz <- "UTC"
   }
@@ -232,14 +264,6 @@ as.POSIXct.ITime <- function(x, tz = "UTC", date = as.Date(Sys.time()), ...) {
 
 as.POSIXlt.ITime <- function(x, ...) {
   as.POSIXlt(as.POSIXct(x, ...))
-}
-
-as.ITime.times <- function(x, ...) {
-  x <- unclass(x)
-  daypart <- x - floor(x)
-  secs <- as.integer(round(daypart * 86400))
-  structure(secs,
-        class = "ITime")
 }
 
 ###################################################################
@@ -252,9 +276,30 @@ as.ITime.times <- function(x, ...) {
 #   lubridate routines do not return integer values.
 ###################################################################
 
-second  <- function(x) as.integer(as.POSIXlt(x)$sec)
-minute  <- function(x) as.POSIXlt(x)$min
-hour    <- function(x) as.POSIXlt(x)$hour
+second  <- function(x) {
+  if (inherits(x,'POSIXct') && identical(attr(x,'tzone'),'UTC')) {
+    # if we know the object is in UTC, can calculate the hour much faster
+    as.integer(x) %% 60L
+  } else {
+    as.integer(as.POSIXlt(x)$sec)
+  }
+}
+minute  <- function(x) {
+  if (inherits(x,'POSIXct') && identical(attr(x,'tzone'),'UTC')) {
+    # ever-so-slightly faster than x %% 3600L %/% 60L
+    as.integer(x) %/% 60L %% 60L
+  } else {
+    as.POSIXlt(x)$min
+  }
+}
+hour <- function(x) {
+  if (inherits(x,'POSIXct') && identical(attr(x,'tzone'),'UTC')) {
+    # ever-so-slightly faster than x %% 86400L %/% 3600L
+    as.integer(x) %/% 3600L %% 24L
+  } else {
+    as.POSIXlt(x)$hour
+  }
+}
 yday    <- function(x) as.POSIXlt(x)$yday + 1L
 wday    <- function(x) (unclass(as.IDate(x)) + 4L) %% 7L + 1L
 mday    <- function(x) as.POSIXlt(x)$mday

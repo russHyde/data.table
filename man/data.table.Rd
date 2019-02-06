@@ -18,7 +18,7 @@
    Tip: one of the \emph{quickest} ways to learn the features is to type \code{example(data.table)} and study the output at the prompt.
 }
 \usage{
-data.table(..., keep.rownames=FALSE, check.names=FALSE, key=NULL, stringsAsFactors=FALSE)
+data.table(\dots, keep.rownames=FALSE, check.names=FALSE, key=NULL, stringsAsFactors=FALSE)
 
 \method{[}{data.table}(x, i, j, by, keyby, with = TRUE,
   nomatch = getOption("datatable.nomatch"),                   # default: NA_integer_
@@ -61,7 +61,7 @@ data.table(..., keep.rownames=FALSE, check.names=FALSE, key=NULL, stringsAsFacto
 
             \item{If not, \code{x} \emph{must be keyed}. Key can be set using \code{\link{setkey}}. If \code{i} is also keyed, then first \emph{key} column of \code{i} is matched against first \emph{key} column of \code{x}, second against second, etc..
 
-            If \code{i} is not keyed, then first column of \code{i} is matched against first \emph{key} column of \code{x}, second column of \code{i} against second \emph{key} column of \code{x}, etc...
+            If \code{i} is not keyed, then first column of \code{i} is matched against first \emph{key} column of \code{x}, second column of \code{i} against second \emph{key} column of \code{x}, etc\ldots
 
             This is summarised in code as \code{min(length(key(x)), if (haskey(i)) length(key(i)) else ncol(i))}.}
         }
@@ -80,7 +80,7 @@ data.table(..., keep.rownames=FALSE, check.names=FALSE, key=NULL, stringsAsFacto
 
     The expression `.()` is a \emph{shorthand} alias to \code{list()}; they both mean the same. (An exception is made for the use of \code{.()} within a call to \code{\link{bquote}}, where \code{.()} is left unchanged.) As long as \code{j} returns a \code{list}, each element of the list becomes a column in the resulting \code{data.table}. This is the default \emph{enhanced} mode.
 
-    When \code{with=FALSE}, \code{j} can be a vector of column names or positions to select (as in \code{data.frame}), or a logical vector with length \code{ncol(x)} defining columns to select. Note: if a logical vector with length \code{k < ncol(x)} is passed, it will be filled to length \code{ncol(x)} with \code{FALSE}, which is different from \code{data.frame}, where the vector is recycled.
+    When \code{j} is a vector of column names or positions to select (as in \code{data.frame}). There is no need to use \code{with=FALSE} anymore. In case of using logical vector with length \code{ncol(x)} defining columns to select \code{with=FALSE} is still necessary. Note: if a logical vector with length \code{k < ncol(x)} is passed, it will be filled to length \code{ncol(x)} with \code{FALSE}, which is different from \code{data.frame}, where the vector is recycled.
 
     \emph{Advanced:} \code{j} also allows the use of special \emph{read-only} symbols: \code{\link{.SD}}, \code{\link{.N}}, \code{\link{.I}}, \code{\link{.GRP}}, \code{\link{.BY}}.
 
@@ -110,11 +110,11 @@ data.table(..., keep.rownames=FALSE, check.names=FALSE, key=NULL, stringsAsFacto
 
     \item{keyby}{ Same as \code{by}, but with an additional \code{setkey()} run on the \code{by} columns of the result, for convenience. It is common practice to use `keyby=` routinely when you wish the result to be sorted.}
 
-    \item{with}{ By default \code{with=TRUE} and \code{j} is evaluated within the frame of \code{x}; column names can be used as variables.
+    \item{with}{ By default \code{with=TRUE} and \code{j} is evaluated within the frame of \code{x}; column names can be used as variables. In case of overlapping variables names inside dataset and in parent scope you can use double dot prefix \code{..cols} to explicitly refer to `\code{cols} variable parent scope and not from your dataset.
 
-        When \code{with=FALSE} \code{j} is a character vector of column names, a numeric/logical vector of column positions to select or of the form \code{startcol:endcol}, and the value returned is always a \code{data.table}. \code{with=FALSE} is often useful in \code{data.table} to select columns dynamically. Note that \code{x[, cols, with=FALSE]} is equivalent to \code{x[, .SD, .SDcols=cols]}.}
+        When \code{j} is a character vector of column names, a numeric vector of column positions to select or of the form \code{startcol:endcol}, and the value returned is always a \code{data.table}. \code{with=FALSE} is not necessary anymore to select columns dynamically. Note that \code{x[, cols]} is equivalent to \code{x[, ..cols]} and to \code{x[, cols, with=FALSE]} and to \code{x[, .SD, .SDcols=cols]}.}
 
-    \item{nomatch}{ Same as \code{nomatch} in \code{\link{match}}. When a row in \code{i} has no match to \code{x}, \code{nomatch=NA} (default) means \code{NA} is returned. \code{0} means no rows will be returned for that row of \code{i}. Use \code{options(datatable.nomatch=0)} to change the default value (used when \code{nomatch} is not supplied).}
+    \item{nomatch}{ When a row in \code{i} has no match to \code{x}, \code{nomatch=NA} (default) means \code{NA} is returned. \code{NULL} (or \code{0} for backward compatibility) means no rows will be returned for that row of \code{i}. Use \code{options(datatable.nomatch=NULL)} to change the default value (used when \code{nomatch} is not supplied).}
 
     \item{mult}{ When \code{i} is a \code{list} (or \code{data.frame} or \code{data.table}) and \emph{multiple} rows in \code{x} match to the row in \code{i}, \code{mult} controls which are returned: \code{"all"} (default), \code{"first"} or \code{"last"}.}
 
@@ -141,7 +141,11 @@ data.table(..., keep.rownames=FALSE, check.names=FALSE, key=NULL, stringsAsFacto
 
     \item{.SDcols}{ Specifies the columns of \code{x} to be included in the special symbol \code{\link{.SD}} which stands for \code{Subset of data.table}. May be character column names or numeric positions. This is useful for speed when applying a function through a subset of (possible very many) columns; e.g., \code{DT[, lapply(.SD, sum), by="x,y", .SDcols=301:350]}.
 
-    For convenient interactive use, the form \code{startcol:endcol} is also allowed (as in \code{by}), e.g., \code{DT[, lapply(.SD, sum), by=x:y, .SDcols=a:f]}
+    For convenient interactive use, the form \code{startcol:endcol} is also allowed (as in \code{by}), e.g., \code{DT[, lapply(.SD, sum), by=x:y, .SDcols=a:f]}.
+
+    Inversion (column dropping instead of keeping) can be accomplished be prepending the argument with \code{!} or \code{-} (there's no difference between these), e.g. \code{.SDcols = !c('x', 'y')}.
+
+    Finally, you can filter columns to include in \code{.SD} according to regular expressions via \code{.SDcols=patterns(regex1, regex2, ...)}. The included columns will be the \emph{intersection} of the columns identified by each pattern; pattern unions can easily be specified with \code{|} in a regex. You can also invert a pattern as usual with \code{.SDcols = !patterns(...)}.
 }
   \item{verbose}{ \code{TRUE} turns on status and information messages to the console. Turn this on by default using \code{options(datatable.verbose=TRUE)}. The quantity and types of verbosity may be expanded in future.
 
@@ -225,8 +229,8 @@ column called \code{"keep"} containing \code{TRUE} and this is correct behaviour
 \seealso{ \code{\link{special-symbols}}, \code{\link{data.frame}}, \code{\link{[.data.frame}}, \code{\link{as.data.table}}, \code{\link{setkey}}, \code{\link{setorder}}, \code{\link{setDT}}, \code{\link{setDF}}, \code{\link{J}}, \code{\link{SJ}}, \code{\link{CJ}}, \code{\link{merge.data.table}}, \code{\link{tables}}, \code{\link{test.data.table}}, \code{\link{IDateTime}}, \code{\link{unique.data.table}}, \code{\link{copy}}, \code{\link{:=}}, \code{\link{alloc.col}}, \code{\link{truelength}}, \code{\link{rbindlist}}, \code{\link{setNumericRounding}}, \code{\link{datatable-optimize}}, \code{\link{fsetdiff}}, \code{\link{funion}}, \code{\link{fintersect}}, \code{\link{fsetequal}}, \code{\link{anyDuplicated}}, \code{\link{uniqueN}}, \code{\link{rowid}}, \code{\link{rleid}}, \code{\link{na.omit}}, \code{\link{frank}} }
 \examples{
 \dontrun{
-example(data.table)  # to run these examples at the prompt}
-
+example(data.table)  # to run these examples at the prompt
+}
 DF = data.frame(x=rep(c("b","a","c"),each=3), y=c(1,3,6), v=1:9)
 DT = data.table(x=rep(c("b","a","c"),each=3), y=c(1,3,6), v=1:9)
 DF
@@ -266,9 +270,9 @@ DT[2:3, .(sv=sum(v))]          # same, but return data.table with column sv
 DT[2:5, cat(v, "\n")]          # just for j's side effect
 
 # select columns the data.frame way
-DT[, 2, with=FALSE]            # 2nd column, returns a data.table always
-colNum = 2
-DT[, colNum, with=FALSE]       # same, equivalent to DT[, .SD, .SDcols=colNum]
+DT[, 2]                        # 2nd column, returns a data.table always
+colNum = 2                     # to refer vars in `j` from the outside of data use `..` prefix
+DT[, ..colNum]                 # same, equivalent to DT[, .SD, .SDcols=colNum]
 DT[["v"]]                      # same as DT[, v] but much faster
 
 # grouping operations - j and by
@@ -285,7 +289,7 @@ DT[x!="b" | y!=3]              # not yet optimized, currently vector scan subset
 DT[.("b", 3), on=c("x", "y")]  # join on columns x,y of DT; uses binary search (fast)
 DT[.("b", 3), on=.(x, y)]      # same, but using on=.()
 DT[.("b", 1:2), on=c("x", "y")]             # no match returns NA
-DT[.("b", 1:2), on=.(x, y), nomatch=0]      # no match row is not returned
+DT[.("b", 1:2), on=.(x, y), nomatch=NULL]   # no match row is not returned
 DT[.("b", 1:2), on=c("x", "y"), roll=Inf]   # locf, nomatch row gets rolled by previous row
 DT[.("b", 1:2), on=.(x, y), roll=-Inf]      # nocb, nomatch row gets rolled by next row
 DT["b", sum(v*y), on="x"]                   # on rows where DT$x=="b", calculate sum(v*y)
@@ -302,7 +306,7 @@ X
 
 DT[X, on="x"]                         # right join
 X[DT, on="x"]                         # left join
-DT[X, on="x", nomatch=0]              # inner join
+DT[X, on="x", nomatch=NULL]           # inner join
 DT[!X, on="x"]                        # not join
 DT[X, on=c(y="v")]                    # join using column "y" of DT with column "v" of X
 DT[X, on="y==v"]                      # same as above (v1.9.8+)
@@ -349,7 +353,7 @@ kDT[.("a")]                           # same, .() is an alias for list()
 kDT[list("a")]                        # same
 kDT[.("a", 3)]                        # join to 2 columns
 kDT[.("a", 3:6)]                      # join 4 rows (2 missing)
-kDT[.("a", 3:6), nomatch=0]           # remove missing
+kDT[.("a", 3:6), nomatch=NULL]        # remove missing
 kDT[.("a", 3:6), roll=TRUE]           # locf rolling join
 kDT[.("a", 3:6), roll=Inf]            # same as above
 kDT[.("a", 3:6), roll=-Inf]           # nocb rolling join
@@ -357,16 +361,18 @@ kDT[!.("a")]                          # not join
 kDT[!"a"]                             # same
 
 # more on special symbols, see also ?"special-symbols"
-DT[.N]                                # last row
-DT[, .N]                              # total number of rows in DT
-DT[, .N, by=x]                        # number of rows in each group
-DT[, .SD, .SDcols=x:y]                # select columns 'x' and 'y'
-DT[, .SD[1]]                          # first row of all columns
-DT[, .SD[1], by=x]                    # first row of 'y' and 'v' for each group in 'x'
-DT[, c(.N, lapply(.SD, sum)), by=x]   # get rows *and* sum columns 'v' and 'y' by group
-DT[, .I[1], by=x]                     # row number in DT corresponding to each group
-DT[, grp := .GRP, by=x]               # add a group counter column
-X[, DT[.BY, y, on="x"], by=x]         # join within each group
+DT[.N]                                  # last row
+DT[, .N]                                # total number of rows in DT
+DT[, .N, by=x]                          # number of rows in each group
+DT[, .SD, .SDcols=x:y]                  # select columns 'x' through 'y'
+DT[ , .SD, .SDcols = !x:y]              # drop columns 'x' through 'y'
+DT[ , .SD, .SDcols = patterns('^[xv]')] # select columns matching '^x' or '^v'
+DT[, .SD[1]]                            # first row of all columns
+DT[, .SD[1], by=x]                      # first row of 'y' and 'v' for each group in 'x'
+DT[, c(.N, lapply(.SD, sum)), by=x]     # get rows *and* sum columns 'v' and 'y' by group
+DT[, .I[1], by=x]                       # row number in DT corresponding to each group
+DT[, grp := .GRP, by=x]                 # add a group counter column
+X[, DT[.BY, y, on="x"], by=x]           # join within each group
 
 # add/update/delete by reference (see ?assign)
 print(DT[, z:=42L])                   # add new column by reference
@@ -425,7 +431,11 @@ if (interactive()) {
   # keep up to date with latest stable version on CRAN
   update.packages()
 
-  # get the latest devel version (compiled binary for Windows available -- no tools needed)
+  # get the latest devel version
+  update.dev.pkg()
+  # compiled devel binary for Windows available -- no Rtools needed
+  update.dev.pkg(repo="https://Rdatatable.github.io/data.table")
+  # read more at:
   # https://github.com/Rdatatable/data.table/wiki/Installation
 }
 }}

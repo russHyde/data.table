@@ -328,10 +328,8 @@ fread <- function(input="",file=NULL,text=NULL,cmd=NULL,sep="auto",sep2="auto",d
     }
     setkeyv(ans, key)
   }
-<<<<<<< HEAD
 
-  if (yaml) attr(ans, 'yaml_metadata') = yaml_header
-=======
+  if (yaml) setattr(ans, 'yaml_metadata', yaml_header)
   if (!is.null(index) && data.table) {
     if (!all(sapply(index, is.character)))
       stop("index argument of data.table() must be a character vector naming columns (NB: col.names are applied before this)")
@@ -347,7 +345,6 @@ fread <- function(input="",file=NULL,text=NULL,cmd=NULL,sep="auto",sep2="auto",d
     }
     setindexv(ans, index)
   }
->>>>>>> 3733e61e2e81ccfad509f199bdba2179fd7fa143
   ans
 }
 

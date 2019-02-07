@@ -23,7 +23,7 @@ showProgress=getOption("datatable.showProgress", interactive()),
 data.table=getOption("datatable.fread.datatable", TRUE),
 nThread=getDTthreads(verbose),
 logical01=getOption("datatable.logical01", FALSE),  # due to change to TRUE; see NEWS
-autostart=NA
+yaml=FALSE, autostart=NA
 )
 }
 \arguments{
@@ -54,9 +54,10 @@ autostart=NA
   \item{key}{Character vector of one or more column names which is passed to \code{\link{setkey}}. It may be a single comma separated string such as \code{key="x,y,z"}, or a vector of names such as \code{key=c("x","y","z")}. Only valid when argument \code{data.table=TRUE}. Where applicable, this should refer to column names given in \code{col.names}. }
   \item{index}{ Character vector or list of character vectors of one or more column names which is passed to \code{\link{setindexv}}. As with \code{key}, comma-separated notation like \code{index="x,y,z"} is accepted for convenience. Only valid when argument \code{data.table=TRUE}. Where applicable, this should refer to column names given in \code{col.names}. }
   \item{showProgress}{ \code{TRUE} displays progress on the console if the ETA is greater than 3 seconds. It is produced in fread's C code where the very nice (but R level) txtProgressBar and tkProgressBar are not easily available. }
-  \item{data.table}{ TRUE returns a \code{data.table}. FALSE returns a \code{data.frame}. The default for this argument can be changed with \code{options(datatable.fread.datatable=FALSE)}.}
+  \item{data.table}{ \code{TRUE} returns a \code{data.table}. \code{FALSE} returns a \code{data.frame}. The default for this argument can be changed with \code{options(datatable.fread.datatable=FALSE)}.}
   \item{nThread}{The number of threads to use. Experiment to see what works best for your data on your hardware.}
-  \item{logical01}{If TRUE a column containing only 0s and 1s will be read as logical, otherwise as integer.}
+  \item{logical01}{If \code{TRUE} a column containing only 0s and 1s will be read as logical, otherwise as integer.}
+  \item{yaml}{ If \code{TRUE}, \code{fread} will attempt to parse (using \code{yaml::yaml.load}) the top of the input as YAML, and further to glean parameters relevant to improving the performance of \code{fread} on the data itself. The entire YAML section is returned as parsed into a \code{list} in the \code{yaml_metadata} attribute. See \code{Details}. }
   \item{autostart}{ Deprecated and ignored with warning. Please use \code{skip} instead. }
 }
 \details{
@@ -93,6 +94,9 @@ When \code{quote} is a single character,
 
 To read fields \emph{as is} instead, use \code{quote = ""}.
 
+\bold{CSVY Support:}
+Currently, the \code{yaml} setting is somewhat inflexible with respect to incorporating metadata to facilitate file reading. Information on column classes should be stored at the top level under the heading \code{fields}; those with both a \code{type} and a \code{name} sub-heading will be merged into \code{colClasses}. \code{fread} can also parse the field separator if it's stored under the top-level heading \code{sep} or \code{delimiter}; the \code{header} argument under heading \code{header}; the \code{quote} argument under heading \code{quote}, \code{quoteChar}, or \code{quote_char}; the \code{dec} argument under heading \code{dec} or \code{decimal}; and the \code{na.strings} argument under heading \code{na.strings}.
+
 \bold{File Download:}
 
 When \code{input} begins with http://, https://, ftp://, ftps://, or file://, \code{fread} detects this and \emph{downloads} the target to a temporary file (at \code{tempfile()}) before proceeding to read the file as usual. Secure URLS (ftps:// and https://) are downloaded with \code{curl::curl_download}; ftp:// and http:// paths are downloaded with \code{download.file} and \code{method} set to \code{getOption("download.file.method")}, defaulting to \code{"auto"}; and file:// is downloaded with \code{download.file} with \code{method="internal"}. NB: this implies that for file://, even files found on the current machine will be "downloaded" (i.e., hard-copied) to a temporary file. See \code{\link{download.file}} for more details.
@@ -117,6 +121,8 @@ Background :\cr
 \url{http://stackoverflow.com/questions/9608950/reading-huge-files-using-memory-mapped-files}
 
 finagler = "to get or achieve by guile or manipulation" \url{http://dictionary.reference.com/browse/finagler}
+
+On YAML, see \url{http://yaml.org/}; on csvy, see \url{http://csvy.org/}.
 }
 \seealso{
   \code{\link[utils:read.table]{read.csv}}, \code{\link[base:connections]{url}}, \code{\link[base:locales]{Sys.setlocale}}, \code{\link{setDTthreads}}, \code{\link{fwrite}}, \href{https://CRAN.R-project.org/package=bit64}{\code{bit64::integer64}}

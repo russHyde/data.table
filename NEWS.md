@@ -125,6 +125,10 @@
 
 1. `fread()` can now read `.gz` and `.bz2` files directly: `fread("file.csv.gz")`, [#717](https://github.com/Rdatatable/data.table/issues/717) [#3058](https://github.com/Rdatatable/data.table/issues/3058). It uses `R.utils::decompressFile` to decompress to a `tempfile()` which is then read by `fread()` in the usual way. For greater speed on large-RAM servers, it is recommended to use ramdisk for temporary files by setting `TEMPDIR` to `/dev/shm`; see `?tempdir`. The decompressed temporary file is removed as soon as `fread` completes even if there is an error reading the file. Reading a remote compressed file in one step will be supported in the next version; e.g. `fread("http://domain.org/file.csv.bz2")`.
 
+#### NEW FEATURES
+
+    1. `fread` gains argument `yaml` (default `FALSE`) and the ability to parse CSVY-formatted input files (i.e., csv files with metadata in a header formatted as YAML; see http://csvy.org/), [#1701](https://github.com/Rdatatable/data.table/issues/1701). See `?fread` and files in `/inst/tests/csvy/` for sample formats; please provide feedback if you find this feature useful and would like extended capabilities. Thanks to @leeper at [`rio`](https://github.com/leeper/rio) for the inspiration and @MichaelChirico for implementing.
+
 #### BUG FIXES
 
 1. Joining two keyed tables using `on=` to columns not forming a leading subset of `key(i)` could result in an invalidly keyed result, [#3061](https://github.com/Rdatatable/data.table/issues/3061). Subsequent queries on the result could then return incorrect results. A warning `longer object length is not a multiple of shorter object length` could also occur. Thanks to @renkun-ken for reporting and the PR.

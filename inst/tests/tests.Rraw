@@ -13410,6 +13410,18 @@ test(1979, DT[,.(a,b,if(FALSE)c)], DT[,c("a","b")])
 x <- as.array(1:5)
 test(1980, names(data.table(x)), "x")
 
+# #2306, use_merge argument of as.IDate.default
+char_date = as.character(.Date(17532:17896))
+test(1981.1, as.IDate(char_date, use_lookup = TRUE), 
+     as.IDate(char_date, use_lookup = FALSE))
+test(1981.2, as.IDate(char_date, use_lookup = 'auto'), 
+     as.IDate(char_date, use_lookup = FALSE))
+
+char_time = format(.POSIXct(1549503263:1549503312, 'UTC'), '%T')
+test(1978.1, as.ITime(char_time, use_lookup = TRUE), 
+     as.ITime(char_time, use_lookup = FALSE))
+test(1978.2, as.ITime(char_time, use_lookup = 'auto'), 
+     as.ITime(char_time, use_lookup = FALSE))
 
 ###################################
 #  Add new tests above this line  #

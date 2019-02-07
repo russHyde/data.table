@@ -126,10 +126,10 @@ as.ITime.default <- function(x, ..., use_lookup = 'auto') {
     setDT(DT)
 
     lookup = unique(DT)
-    lookup[ , 'ITime' := as.ITime(as.POSIXlt(x, ...), ...)]
+    lookup[ , 'ITime' := as.ITime(as.POSIXlt(input, ...), ...)]
     lookup[DT, on = 'input']$ITime
   } else {
-    as.IDate(as.Date(x, tz = tz, ...))
+    as.ITime(as.POSIXlt(x, ...), ...)
   }
 }
 
